@@ -34,6 +34,7 @@ interface VoiceflowTranscriptLog {
   id?: string;
   type?: string;
   role?: string;
+  channel?: string;
   timestamp?: string;
   createdAt?: string;
   updatedAt?: string;
