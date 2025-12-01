@@ -14,11 +14,18 @@ export default function Sidebar() {
   return (
     <div className="fixed left-0 top-0 h-screen w-[250px] bg-white border-r border-border flex flex-col">
       {/* Logo */}
-      <div className="py-2 border-b border-border flex items-center justify-start overflow-hidden">
+      <div className="w-[250px] h-[128px] border-b border-border flex items-center justify-start overflow-hidden">
         <img
-          src="/images/logo.svg"
+          src="/images/logo.svg?v=7"
           alt="Logo"
-          className="h-28 w-full object-contain object-left"
+          style={{ 
+            width: '250px', 
+            height: '128px', 
+            objectFit: 'fill', 
+            objectPosition: 'left center',
+            display: 'block',
+            flexShrink: 0
+          }}
         />
       </div>
 
