@@ -126,7 +126,7 @@ export default function RootLayout({
       <body className="h-screen overflow-hidden">
         <div className="flex h-full">
           <Sidebar />
-          <main className="flex-1 ml-[250px] bg-background-white h-full overflow-hidden">
+          <main className="flex-1 ml-[250px] bg-background-white h-full overflow-y-auto">
             {children}
           </main>
         </div>

@@ -31,4 +31,22 @@ export interface TimePeriod {
   days: number;
 }
 
+export interface LocationBreakdown {
+  rent: { huskisson: number; wollongong: number; nowra: number };
+  investor: { wollongong: number; nowra: number; oranPark: number };
+  ownerOccupier: { wollongong: number; nowra: number; oranPark: number };
+}
+
+export interface SubjectAnalysis {
+  topIntents: Array<{ name: string; count: number }>;
+  topQuestions?: Array<{ question: string; count: number }>;
+}
+
+export interface CategoryBreakdown {
+  rent: number;
+  sales: number;
+  ownerOccupier: number;
+  investor: number;
+}
+
 

@@ -42,7 +42,7 @@ async function fetchMetric(
   endTime: string
 ): Promise<AnalyticsResult> {
   const url = `${VOICEFLOW_ANALYTICS_API}/v2/query/usage`;
-  
+
   // Request body per API docs
   const requestBody = {
     data: {
@@ -82,14 +82,14 @@ async function fetchMetric(
 // Aggregate items by date (YYYY-MM-DD) to get daily totals
 function aggregateByDate(items: AnalyticsItem[]): Map<string, number> {
   const dailyTotals = new Map<string, number>();
-  
+
   for (const item of items) {
     // Extract date from period (e.g., "2025-06-13T18:00:00.000Z" -> "2025-06-13")
     const date = item.period.split('T')[0];
     const currentTotal = dailyTotals.get(date) || 0;
     dailyTotals.set(date, currentTotal + (item.count || 0));
   }
-  
+
   return dailyTotals;
 }
 
@@ -120,16 +120,16 @@ export async function fetchAnalytics(
   // Process interactions data
   let totalInteractions = 0;
   const interactionsTimeSeries: Array<{ period: string; count: number }> = [];
-  
+
   if (interactionsResult.result?.items) {
     // Aggregate by date for time series
     const dailyInteractions = aggregateByDate(interactionsResult.result.items);
-    
+
     for (const [date, count] of dailyInteractions) {
       totalInteractions += count;
       interactionsTimeSeries.push({ period: date, count });
     }
-    
+
     // Sort by date
     interactionsTimeSeries.sort((a, b) => a.period.localeCompare(b.period));
   }
@@ -137,16 +137,16 @@ export async function fetchAnalytics(
   // Process unique_users data
   let totalUsers = 0;
   const usersTimeSeries: Array<{ period: string; count: number }> = [];
-  
+
   if (usersResult.result?.items) {
     // Aggregate by date for time series
     const dailyUsers = aggregateByDate(usersResult.result.items);
-    
+
     for (const [date, count] of dailyUsers) {
       totalUsers += count;
       usersTimeSeries.push({ period: date, count });
     }
-    
+
     // Sort by date
     usersTimeSeries.sort((a, b) => a.period.localeCompare(b.period));
   }
@@ -174,10 +174,65 @@ export async function fetchAnalytics(
   };
 }
 
+export async function fetchIntents(
+  projectId: string,
+  apiKey: string,
+  startDate: string,
+  endDate: string
+): Promise<Array<{ name: string; count: number }>> {
+  const startTime = `${startDate}T00:00:00.000Z`;
+  const endTime = `${endDate}T23:59:59.999Z`;
+
+  try {
+    // Fetch top intents
+    // Note: 'top_intents' returns the most used intents with their counts
+    const result = await fetchMetric(apiKey, projectId, 'top_intents', startTime, endTime);
+
+    if (!result.result?.items) {
+      return [];
+    }
+
+    // Aggregate counts by intent name (which is in the 'type' or 'name' field depending on API version, 
+    // but for 'intents' metric, the item usually has a 'name' or 'type' property identifying the intent)
+    // Based on standard VF API, the grouping key is often in 'type' or 'name'. 
+    // Let's assume 'type' holds the intent name for now based on the AnalyticsItem interface.
+
+    const intentCounts = new Map<string, number>();
+
+    for (const item of result.result.items) {
+      // For 'intents' metric, the identifier is usually in 'type' or a specific field.
+      // If 'type' is missing, we might need to check other fields. 
+      // Assuming 'type' contains the intent name.
+      const name = item.type || 'Unknown';
+      const current = intentCounts.get(name) || 0;
+      intentCounts.set(name, current + (item.count || 0));
+    }
+
+    return Array.from(intentCounts.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count); // Sort by count desc
+
+  } catch (error) {
+    console.warn('Failed to fetch intents:', error);
+    return [];
+  }
+}
+
 export function getDateRange(days: number): { startDate: string; endDate: string } {
   const endDate = new Date();
   const startDate = new Date();
-  startDate.setDate(startDate.getDate() - days);
+  
+  if (days === 0) {
+    // Today - both start and end are today
+    // No change needed, both are already set to today
+  } else if (days === 1) {
+    // Yesterday - both start and end are yesterday
+    startDate.setDate(startDate.getDate() - 1);
+    endDate.setDate(endDate.getDate() - 1);
+  } else {
+    // Last N days - start is N days ago, end is today
+    startDate.setDate(startDate.getDate() - days);
+  }
 
   return {
     startDate: startDate.toISOString().split('T')[0],

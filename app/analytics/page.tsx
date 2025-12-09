@@ -5,6 +5,13 @@ import MetricCard from '@/components/MetricCard';
 import TimeFilter from '@/components/TimeFilter';
 import ConversationsChart from '@/components/ConversationsChart';
 import MessagesChart from '@/components/MessagesChart';
+import CTAVisibility from '@/components/CTAVisibility';
+import LocationBreakdown from '@/components/LocationBreakdown';
+import SubjectAnalysis from '@/components/SubjectAnalysis';
+import SatisfactionScore from '@/components/SatisfactionScore';
+import ClickThroughChart from '@/components/ClickThroughChart';
+import RentSalesRatio from '@/components/RentSalesRatio';
+import FunnelBreakdown from '@/components/FunnelBreakdown';
 
 interface AnalyticsData {
   metrics: {
@@ -20,11 +27,34 @@ interface AnalyticsData {
     conversations: number;
     messages: number;
   }>;
+  totalCTAViews: number;
+  satisfactionScore: {
+    average: number;
+    trend: number[];
+  };
+  clickThrough: {
+    rent: number;
+    sales: number;
+    ownerOccupier: number;
+    investor: number;
+  };
+  locationBreakdown: {
+    rent: { huskisson: number; wollongong: number; nowra: number };
+    investor: { wollongong: number; nowra: number; oranPark: number };
+    ownerOccupier: { wollongong: number; nowra: number; oranPark: number };
+  };
+  topIntents: Array<{ name: string; count: number }>;
+  funnel: {
+    rent: { clicks: number; locationSelection: number };
+    ownerOccupier: { clicks: number; locationSelection: number };
+    investor: { clicks: number; locationSelection: number };
+  };
   isDemo?: boolean;
 }
 
 export default function AnalyticsPage() {
   const [selectedDays, setSelectedDays] = useState(7);
+  const [customRange, setCustomRange] = useState<{ startDate: string; endDate: string } | null>(null);
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -34,12 +64,16 @@ export default function AnalyticsPage() {
       setLoading(true);
       setError(null);
       try {
+        const body = customRange
+          ? { startDate: customRange.startDate, endDate: customRange.endDate }
+          : { days: selectedDays };
+
         const response = await fetch('/api/analytics', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ days: selectedDays }),
+          body: JSON.stringify(body),
         });
 
         if (!response.ok) {
@@ -56,14 +90,54 @@ export default function AnalyticsPage() {
     };
 
     fetchAnalytics();
-  }, [selectedDays]);
+  }, [selectedDays, customRange]);
+
+  const handleCustomRangeChange = (startDate: string, endDate: string) => {
+    setCustomRange({ startDate, endDate });
+    setSelectedDays(-1); // Set to -1 to indicate custom range
+  };
+
+  const handleDaysChange = (days: number) => {
+    if (days !== -1) {
+      setCustomRange(null); // Clear custom range when selecting preset
+    }
+    setSelectedDays(days);
+  };
+
+  // Format date range display
+  const getDateRangeText = () => {
+    if (customRange) {
+      const start = new Date(customRange.startDate).toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric', 
+        year: 'numeric' 
+      });
+      const end = new Date(customRange.endDate).toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric', 
+        year: 'numeric' 
+      });
+      return `${start} - ${end}`;
+    }
+    
+    if (selectedDays === 0) return 'Today';
+    if (selectedDays === 1) return 'Yesterday';
+    return `Last ${selectedDays} days`;
+  };
 
   return (
     <div className="p-8">
       {/* Header */}
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="font-heading text-3xl text-secondary-black">Analytics</h1>
-        <TimeFilter selectedDays={selectedDays} onDaysChange={setSelectedDays} />
+      <div className="flex justify-between items-start mb-8">
+        <div>
+          <h1 className="font-heading text-3xl text-secondary-black">Analytics</h1>
+          <p className="text-sm text-text-muted font-body mt-1">{getDateRangeText()}</p>
+        </div>
+        <TimeFilter 
+          selectedDays={selectedDays} 
+          onDaysChange={handleDaysChange}
+          onCustomRangeChange={handleCustomRangeChange}
+        />
       </div>
 
       {loading && (
@@ -84,12 +158,12 @@ export default function AnalyticsPage() {
           {data.isDemo && (
             <div className="bg-yellow-50 border border-yellow-200 rounded p-4 mb-6">
               <p className="font-body text-yellow-800">
-                <strong>Demo Mode:</strong> Showing sample data. The Voiceflow Analytics API endpoint returned an error. 
+                <strong>Demo Mode:</strong> Showing sample data. The Voiceflow Analytics API endpoint returned an error.
                 Please verify your API key has Analytics API access, or check the Voiceflow documentation for the correct endpoint.
               </p>
             </div>
           )}
-          
+
           {/* Key Metric Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <MetricCard
@@ -115,9 +189,30 @@ export default function AnalyticsPage() {
           </div>
 
           {/* Charts */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
             <ConversationsChart data={data.timeSeries} />
             <MessagesChart data={data.timeSeries} />
+          </div>
+
+          {/* New Metrics Row 1 */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            <SatisfactionScore data={data.satisfactionScore} />
+            <RentSalesRatio data={data.clickThrough} />
+            <CTAVisibility totalViews={data.totalCTAViews} />
+          </div>
+
+          {/* Location Breakdown */}
+          <LocationBreakdown data={data.locationBreakdown} />
+
+          {/* Subject Analysis */}
+          <div className="mb-8">
+            <SubjectAnalysis topIntents={data.topIntents} />
+          </div>
+
+          {/* Category Charts */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <ClickThroughChart data={data.clickThrough} />
+            <FunnelBreakdown data={data.funnel} />
           </div>
         </>
       )}

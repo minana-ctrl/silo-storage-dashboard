@@ -14,6 +14,7 @@ interface ConversationListProps {
   onQueryChange: (value: string) => void;
   days: number;
   onDaysChange: (days: number) => void;
+  onCustomRangeChange?: (startDate: string, endDate: string) => void;
   platform?: string;
   onPlatformChange: (platform?: string) => void;
   onRefresh: () => void;
@@ -47,6 +48,7 @@ export default function ConversationList({
   onQueryChange,
   days,
   onDaysChange,
+  onCustomRangeChange,
   platform,
   onPlatformChange,
   onRefresh,
@@ -85,7 +87,11 @@ export default function ConversationList({
             />
           </svg>
         </div>
-        <TimeFilter selectedDays={days} onDaysChange={onDaysChange} />
+        <TimeFilter 
+          selectedDays={days} 
+          onDaysChange={onDaysChange}
+          onCustomRangeChange={onCustomRangeChange}
+        />
         <button
           type="button"
           onClick={onRefresh}

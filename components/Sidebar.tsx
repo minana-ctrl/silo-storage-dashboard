@@ -18,10 +18,10 @@ export default function Sidebar() {
         <img
           src="/images/logo.svg?v=7"
           alt="Logo"
-          style={{ 
-            width: '250px', 
-            height: '128px', 
-            objectFit: 'fill', 
+          style={{
+            width: '250px',
+            height: '128px',
+            objectFit: 'fill',
             objectPosition: 'left center',
             display: 'block',
             flexShrink: 0
@@ -38,11 +38,10 @@ export default function Sidebar() {
               <li key={item.path}>
                 <Link
                   href={item.path}
-                  className={`block px-4 py-2 rounded transition-colors ${
-                    isActive
+                  className={`block px-4 py-2 rounded transition-colors ${isActive
                       ? 'text-primary-red border-l-4 border-primary-red bg-red-50'
                       : 'text-text-dark hover:text-primary-red hover:bg-gray-50'
-                  }`}
+                    }`}
                 >
                   {item.name}
                 </Link>

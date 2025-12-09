@@ -11,12 +11,28 @@ interface FilterState {
   query: string;
   days: number;
   platform?: string;
+  customStartDate?: string;
+  customEndDate?: string;
 }
 
 function getDateRange(days: number) {
   const end = new Date();
   const start = new Date();
-  start.setDate(start.getDate() - (days - 1));
+  
+  if (days === 0) {
+    // Today
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+  } else if (days === 1) {
+    // Yesterday
+    start.setDate(start.getDate() - 1);
+    start.setHours(0, 0, 0, 0);
+    end.setDate(end.getDate() - 1);
+    end.setHours(23, 59, 59, 999);
+  } else {
+    // Last N days
+    start.setDate(start.getDate() - (days - 1));
+  }
 
   return {
     startTime: start.toISOString(),
@@ -57,9 +73,18 @@ export default function ConversationsPage() {
       if (filters.query) params.set('q', filters.query);
       if (filters.platform) params.set('platform', filters.platform);
 
-      const { startTime, endTime } = getDateRange(filters.days);
-      params.set('startTime', startTime);
-      params.set('endTime', endTime);
+      // Use custom dates if provided, otherwise calculate from days
+      if (filters.customStartDate && filters.customEndDate) {
+        const startTime = new Date(filters.customStartDate).toISOString();
+        const endTime = new Date(filters.customEndDate);
+        endTime.setHours(23, 59, 59, 999);
+        params.set('startTime', startTime);
+        params.set('endTime', endTime.toISOString());
+      } else {
+        const { startTime, endTime } = getDateRange(filters.days);
+        params.set('startTime', startTime);
+        params.set('endTime', endTime);
+      }
 
       if (cursor) params.set('cursor', cursor);
 
@@ -114,7 +139,7 @@ export default function ConversationsPage() {
   useEffect(() => {
     loadConversations(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.query, filters.days, filters.platform, refreshToken]);
+  }, [filters.query, filters.days, filters.platform, filters.customStartDate, filters.customEndDate, refreshToken]);
 
   useEffect(() => {
     if (selectedId) {
@@ -130,6 +155,29 @@ export default function ConversationsPage() {
   };
 
   const handleRefresh = () => setRefreshToken((token) => token + 1);
+
+  const handleCustomRangeChange = (startDate: string, endDate: string) => {
+    setFilters((prev) => ({ 
+      ...prev, 
+      days: -1,
+      customStartDate: startDate, 
+      customEndDate: endDate 
+    }));
+  };
+
+  const handleDaysChange = (days: number) => {
+    if (days !== -1) {
+      // Clear custom dates when selecting a preset
+      setFilters((prev) => ({ 
+        ...prev, 
+        days, 
+        customStartDate: undefined, 
+        customEndDate: undefined 
+      }));
+    } else {
+      setFilters((prev) => ({ ...prev, days }));
+    }
+  };
 
   return (
     <div className="flex h-full flex-col p-8 overflow-hidden">
@@ -156,7 +204,8 @@ export default function ConversationsPage() {
           query={filters.query}
           onQueryChange={(value) => setFilters((prev) => ({ ...prev, query: value }))}
           days={filters.days}
-          onDaysChange={(days) => setFilters((prev) => ({ ...prev, days }))}
+          onDaysChange={handleDaysChange}
+          onCustomRangeChange={handleCustomRangeChange}
           platform={filters.platform}
           onPlatformChange={(platform) => setFilters((prev) => ({ ...prev, platform }))}
           onRefresh={handleRefresh}

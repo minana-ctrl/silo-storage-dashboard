@@ -12,10 +12,42 @@ interface MessagesChartProps {
 }
 
 export default function MessagesChart({ data }: MessagesChartProps) {
-  const formattedData = data.map((item) => ({
-    date: new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-    messages: item.messages,
-  }));
+  // Determine if we're showing single day or multi-day data
+  const isSingleDay = data.length === 1;
+  
+  const formattedData = data.map((item, index) => {
+    const date = new Date(item.date);
+    let label: string;
+    
+    if (isSingleDay) {
+      // For single day, show just the date
+      label = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    } else if (data.length <= 7) {
+      // For short ranges, show day of week + date
+      label = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    } else {
+      // For longer ranges, show just month and day
+      label = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+    
+    return {
+      date: label,
+      messages: item.messages,
+      rawDate: item.date,
+    };
+  });
+
+  // If no data, show empty state
+  if (data.length === 0) {
+    return (
+      <div className="card p-6">
+        <h3 className="font-heading text-lg text-secondary-black mb-4">Incoming Messages over Time</h3>
+        <div className="flex items-center justify-center h-[300px] text-text-muted font-body">
+          No data available for this period
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="card p-6">
@@ -33,10 +65,14 @@ export default function MessagesChart({ data }: MessagesChartProps) {
             dataKey="date" 
             stroke="#9ca3af"
             style={{ fontSize: '12px' }}
+            angle={data.length > 10 ? -45 : 0}
+            textAnchor={data.length > 10 ? 'end' : 'middle'}
+            height={data.length > 10 ? 80 : 30}
           />
           <YAxis 
             stroke="#9ca3af"
             style={{ fontSize: '12px' }}
+            allowDecimals={false}
           />
           <Tooltip 
             contentStyle={{ 
@@ -45,6 +81,7 @@ export default function MessagesChart({ data }: MessagesChartProps) {
               borderRadius: '4px',
               fontSize: '12px'
             }}
+            formatter={(value: number) => [value, 'Messages']}
           />
           <Area 
             type="monotone" 
@@ -52,12 +89,14 @@ export default function MessagesChart({ data }: MessagesChartProps) {
             stroke="#000000" 
             strokeWidth={2}
             fillOpacity={1} 
-            fill="url(#colorMessages)" 
+            fill="url(#colorMessages)"
+            dot={isSingleDay}
           />
         </AreaChart>
       </ResponsiveContainer>
     </div>
   );
 }
+
 
 

@@ -1,0 +1,64 @@
+# Dashboard Update Overview
+
+This document summarises the upcoming updates to the **Silo AI Assistant Dashboard**, designed to provide clearer visibility into user behaviour, click-through performance, and overall satisfaction.
+
+---
+
+## Key Metrics Included
+
+### 1. Call-to-Action (CTA) Visibility  
+Displays how often each CTA is shown to users.  
+Helps quantify exposure before actions are taken.
+
+---
+
+### 2. Customer Satisfaction Score (1–5)  
+At the end of each conversation, users rate the assistant from 1 to 5.  
+The dashboard will show:  
+- **Average satisfaction score**  
+- **Trend over time** (optional)
+
+This reflects perceived value and quality of conversations.
+
+---
+
+### 3. Click-Through Metrics  
+Visualises the number of users engaging with each main intent category:
+
+- Rent  
+- Sales  
+- Owner Occupier  
+- Investor  
+
+This shows the distribution of user intent across segments.
+
+---
+
+### 4. Rent vs Sales Ratio  
+A clear percentage comparison between Rent-focused and Sales-focused interactions.  
+Example:
+
+- **Rent:** 68%  
+- **Sales:** 32%  
+
+Helps identify which commercial path attracts the most engagement.
+
+---
+
+## 5. Funnel Breakdown by Category  
+
+Each category includes a step-by-step interaction funnel.
+
+### **Rent**
+- Total Rent clicks  
+- Users who continue to location selection  
+
+### **Owner Occupier**
+- Total Owner Occupier clicks  
+- Users who continue to location selection  
+
+### **Investor**
+- Total Investor clicks  
+- Users who continue to location selection  
+
+---
