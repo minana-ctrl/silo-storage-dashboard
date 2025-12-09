@@ -99,18 +99,6 @@ export default function ChatInterface({
           messages.map((message) => <MessageBubble key={message.id} message={message} />)
         )}
       </div>
-
-      <div className="border-t border-border px-6 py-4 flex-shrink-0">
-        <label className="block text-xs font-body uppercase tracking-wide text-text-muted mb-2">
-          Chat Input (read only)
-        </label>
-        <input
-          type="text"
-          disabled
-          placeholder="What is ChatDash?"
-          className="w-full rounded border border-border bg-gray-50 px-4 py-3 font-body text-text-muted"
-        />
-      </div>
     </div>
   );
 }
