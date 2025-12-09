@@ -59,7 +59,7 @@ export function parseLocationsFromTranscripts(
 
   // Combine all messages into one text for analysis
   const allText = messages
-    .map((msg) => (typeof msg.message === 'string' ? msg.message : JSON.stringify(msg.message)))
+    .map((msg) => (typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)))
     .join(' ');
 
   // Detect category from conversation
@@ -72,37 +72,35 @@ export function parseLocationsFromTranscripts(
   }
 
   // Count location mentions in appropriate category
-  const categoryLocations = breakdown[detectedCategory];
-  
   if (detectedCategory === 'rent') {
     if (locationPatterns.huskisson.test(allText)) {
-      categoryLocations.huskisson++;
+      breakdown.rent.huskisson++;
     }
     if (locationPatterns.wollongong.test(allText)) {
-      categoryLocations.wollongong++;
+      breakdown.rent.wollongong++;
     }
     if (locationPatterns.nowra.test(allText)) {
-      categoryLocations.nowra++;
+      breakdown.rent.nowra++;
     }
   } else if (detectedCategory === 'investor') {
     if (locationPatterns.wollongong.test(allText)) {
-      categoryLocations.wollongong++;
+      breakdown.investor.wollongong++;
     }
     if (locationPatterns.nowra.test(allText)) {
-      categoryLocations.nowra++;
+      breakdown.investor.nowra++;
     }
     if (locationPatterns.oranPark.test(allText)) {
-      categoryLocations.oranPark++;
+      breakdown.investor.oranPark++;
     }
   } else if (detectedCategory === 'ownerOccupier') {
     if (locationPatterns.wollongong.test(allText)) {
-      categoryLocations.wollongong++;
+      breakdown.ownerOccupier.wollongong++;
     }
     if (locationPatterns.nowra.test(allText)) {
-      categoryLocations.nowra++;
+      breakdown.ownerOccupier.nowra++;
     }
     if (locationPatterns.oranPark.test(allText)) {
-      categoryLocations.oranPark++;
+      breakdown.ownerOccupier.oranPark++;
     }
   }
 
@@ -124,7 +122,7 @@ export function parseSatisfactionFromTranscripts(
 
   // Look for satisfaction scores in messages
   messages.forEach((msg) => {
-    const text = typeof msg.message === 'string' ? msg.message : JSON.stringify(msg.message);
+    const text = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
     const match = text.match(satisfactionPatterns);
     
     if (match && match[1]) {
@@ -164,7 +162,7 @@ export function parseCTAFromTranscripts(messages: TranscriptTurn[]): CTAInteract
   }
 
   const allText = messages
-    .map((msg) => (typeof msg.message === 'string' ? msg.message : JSON.stringify(msg.message)))
+    .map((msg) => (typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)))
     .join(' ');
 
   if (ctaPatterns.scheduleTour.test(allText)) ctaCount['Schedule Tour']++;
@@ -181,7 +179,7 @@ export function extractCategoryFromTranscript(messages: TranscriptTurn[]): 'rent
   }
 
   const allText = messages
-    .map((msg) => (typeof msg.message === 'string' ? msg.message : JSON.stringify(msg.message)))
+    .map((msg) => (typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)))
     .join(' ');
 
   if (categoryPatterns.investor.test(allText)) {
