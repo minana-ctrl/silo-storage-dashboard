@@ -117,6 +117,7 @@ export function inferEvents(
 
 /**
  * Extract CTA (Call-to-Action) events from transcript logs
+ * Includes both button/click traces and path action selections (user choices)
  */
 function extractCTAEvents(sessionId: string, userId: string | null, logs: any[]): InferredEvent[] {
   const ctaEvents: InferredEvent[] = [];
@@ -148,6 +149,31 @@ function extractCTAEvents(sessionId: string, userId: string | null, logs: any[])
               },
             });
           }
+        }
+      }
+    }
+
+    // Look for path action selections (user choices like button clicks in chat)
+    if (log.type === 'action' && log.data?.type && typeof log.data.type === 'string' && log.data.type.startsWith('path-')) {
+      const payload = log.data.payload;
+      if (payload) {
+        const ctaId = log.data.type;
+        const ctaName = payload.label || payload.buttonLabel || undefined;
+
+        if (ctaName) {
+          ctaEvents.push({
+            session_id: sessionId,
+            user_id: userId,
+            event_type: 'cta_clicked',
+            event_ts: log.createdAt || new Date().toISOString(),
+            cta_id: ctaId,
+            cta_name: ctaName,
+            meta: {
+              description: `User selected: ${ctaName}`,
+              pathId: ctaId,
+              payload,
+            },
+          });
         }
       }
     }

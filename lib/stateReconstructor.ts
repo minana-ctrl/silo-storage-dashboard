@@ -182,8 +182,14 @@ export function reconstructState(
     }
   }
 
-  // 4. Extract rating
-  const rating = vars.rating ? extractRatingScore(vars.rating) : null;
+  // 4. Extract rating from properties or traces
+  let rating = vars.rating ? extractRatingScore(vars.rating) : null;
+  if (!rating) {
+    const tracedRating = findVariableInTraces(logs, 'rating');
+    if (tracedRating) {
+      rating = extractRatingScore(tracedRating);
+    }
+  }
 
   // 5. Extract feedback (only for ratings 1-3)
   const feedback = rating && rating <= 3 ? vars.feedback : null;
