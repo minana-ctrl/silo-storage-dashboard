@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchTranscriptDialog } from '@/lib/voiceflowTranscripts';
-import { getApiKey } from '@/lib/env';
+import { fetchTranscriptDialogFromDB } from '@/lib/conversationQueries';
 import type { TranscriptTurn } from '@/types/conversations';
 
 const MOCK_DIALOG: TranscriptTurn[] = [
@@ -35,7 +34,6 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   const transcriptId = params.id;
-  const apiKey = getApiKey();
 
   if (!transcriptId) {
     return NextResponse.json(
@@ -44,15 +42,19 @@ export async function GET(
     );
   }
 
-  if (!apiKey) {
-    return NextResponse.json({ messages: MOCK_DIALOG, isDemo: true }, { status: 200 });
-  }
-
   try {
-    const messages = await fetchTranscriptDialog(transcriptId, apiKey);
+    console.log(`[Conversations] Fetching transcript ${transcriptId} from database...`);
+    const messages = await fetchTranscriptDialogFromDB(transcriptId);
+    
+    // If no data from DB, fall back to mock
+    if (messages.length === 0) {
+      console.log(`[Conversations] No transcript ${transcriptId} in database, using mock data`);
+      return NextResponse.json({ messages: MOCK_DIALOG, isDemo: true }, { status: 200 });
+    }
+
     return NextResponse.json({ messages, isDemo: false }, { status: 200 });
   } catch (error) {
-    console.warn(`Voiceflow transcript dialog failed for ${transcriptId}, using mock data`, error);
+    console.warn(`[Conversations] Database query failed for ${transcriptId}, using mock data:`, error);
     return NextResponse.json({ messages: MOCK_DIALOG, isDemo: true }, { status: 200 });
   }
 }

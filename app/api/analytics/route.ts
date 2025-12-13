@@ -1,9 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchAnalytics, fetchIntents, getDateRange } from '@/lib/voiceflow';
+import {
+  getCategoryBreakdown,
+  getLocationBreakdown,
+  getSatisfactionScore,
+  getFeedback,
+  getFunnelBreakdown,
+  getConversationStats,
+  getCTAMetrics,
+} from '@/lib/analyticsQueries';
+import { query } from '@/lib/db';
 import { getApiKey, getProjectId } from '@/lib/env';
 import type { LocationBreakdown } from '@/types/analytics';
 
-// Generate mock data for development/demo purposes
+// Generate mock data for development/demo purposes when DB is empty
 function generateMockData(days: number, startDate: string, endDate: string) {
   const baseConversations = 150 + Math.floor(Math.random() * 50);
   const baseMessages = 450 + Math.floor(Math.random() * 100);
@@ -106,9 +115,6 @@ export async function POST(request: NextRequest) {
   try {
     const { days, startDate: customStartDate, endDate: customEndDate } = await request.json();
 
-    const projectId = getProjectId();
-    const apiKey = getApiKey();
-
     // Use custom dates if provided, otherwise calculate from days
     let startDate: string;
     let endDate: string;
@@ -117,236 +123,206 @@ export async function POST(request: NextRequest) {
     if (customStartDate && customEndDate) {
       startDate = customStartDate;
       endDate = customEndDate;
-      // Calculate days between the dates
       const start = new Date(customStartDate);
       const end = new Date(customEndDate);
       effectiveDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
     } else {
       effectiveDays = days || 7;
-      const dateRange = getDateRange(effectiveDays);
-      startDate = dateRange.startDate;
-      endDate = dateRange.endDate;
+      const now = new Date();
+      endDate = now.toISOString().split('T')[0];
+      const start = new Date(now);
+      start.setDate(start.getDate() - effectiveDays);
+      startDate = start.toISOString().split('T')[0];
     }
 
-    // Try to fetch from Voiceflow API if credentials are present
-    if (projectId && apiKey) {
-      try {
-        // Fetch current period data
-        const currentData = await fetchAnalytics(projectId, apiKey, startDate, endDate);
+    // Try to fetch from database first
+    try {
+      console.log(`[Analytics] Fetching data from database for ${startDate} to ${endDate}`);
 
-        // Fetch previous period data for comparison
-        const previousStartDate = new Date(startDate);
-        previousStartDate.setDate(previousStartDate.getDate() - effectiveDays);
-        const previousEndDate = new Date(startDate);
-        previousEndDate.setDate(previousEndDate.getDate() - 1);
+      // Fetch current period data from database
+      const [
+        categoryBreakdown,
+        locationBreakdown,
+        satisfactionScore,
+        feedback,
+        funnelBreakdown,
+        conversationStats,
+        totalCTAViews,
+      ] = await Promise.all([
+        getCategoryBreakdown(startDate, endDate),
+        getLocationBreakdown(startDate, endDate),
+        getSatisfactionScore(startDate, endDate),
+        getFeedback(startDate, endDate),
+        getFunnelBreakdown(startDate, endDate),
+        getConversationStats(startDate, endDate),
+        getCTAMetrics(startDate, endDate),
+      ]);
 
-        const previousData = await fetchAnalytics(
-          projectId,
-          apiKey,
-          previousStartDate.toISOString().split('T')[0],
-          previousEndDate.toISOString().split('T')[0]
-        );
+      // Fetch previous period for comparison
+      const previousStartDate = new Date(startDate);
+      previousStartDate.setDate(previousStartDate.getDate() - effectiveDays);
+      const previousEndDate = new Date(startDate);
+      previousEndDate.setDate(previousEndDate.getDate() - 1);
 
-        // Calculate percentage changes
-        const conversationsChange = previousData.usage.sessions > 0
-          ? ((currentData.usage.sessions - previousData.usage.sessions) / previousData.usage.sessions) * 100
-          : currentData.usage.sessions > 0 ? 100 : 0;
+      const previousStats = await getConversationStats(
+        previousStartDate.toISOString().split('T')[0],
+        previousEndDate.toISOString().split('T')[0]
+      );
 
-        const messagesChange = previousData.usage.messages > 0
-          ? ((currentData.usage.messages - previousData.usage.messages) / previousData.usage.messages) * 100
-          : currentData.usage.messages > 0 ? 100 : 0;
+      // Calculate percentage changes
+      const conversationsChange =
+        previousStats.totalConversations > 0
+          ? (((conversationStats.totalConversations - previousStats.totalConversations) /
+              previousStats.totalConversations) *
+              100)
+          : conversationStats.totalConversations > 0
+            ? 100
+            : 0;
 
-        // Build time series from actual API data
-        // Create a map of all dates in the range
-        const dateMap = new Map<string, { conversations: number; messages: number }>();
-        const currentDate = new Date(startDate);
-        const end = new Date(endDate);
+      const messagesChange =
+        previousStats.totalMessages > 0
+          ? (((conversationStats.totalMessages - previousStats.totalMessages) /
+              previousStats.totalMessages) *
+              100)
+          : conversationStats.totalMessages > 0
+            ? 100
+            : 0;
 
-        // Initialize all dates with 0
-        while (currentDate <= end) {
-          const dateStr = currentDate.toISOString().split('T')[0];
-          dateMap.set(dateStr, { conversations: 0, messages: 0 });
-          currentDate.setDate(currentDate.getDate() + 1);
+      // Build time series data
+      const dateMap = new Map<string, { conversations: number; messages: number }>();
+      const currentDate = new Date(startDate);
+      const end = new Date(endDate);
+
+      // Initialize all dates with 0
+      while (currentDate <= end) {
+        const dateStr = currentDate.toISOString().split('T')[0];
+        dateMap.set(dateStr, { conversations: 0, messages: 0 });
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+
+      // Query daily stats from database
+      const dailyResult = await query<{
+        date: string;
+        conversations: string;
+        messages: string;
+      }>(
+        `
+        SELECT 
+          started_at::date as date,
+          COUNT(*) as conversations,
+          (SELECT COUNT(*) FROM public.vf_turns 
+           WHERE timestamp::date = started_at::date 
+           AND role IN ('user', 'assistant')) as messages
+        FROM public.vf_sessions
+        WHERE started_at >= $1 AND started_at <= $2
+        GROUP BY started_at::date
+        ORDER BY started_at::date
+        `,
+        [startDate, endDate]
+      );
+
+      for (const row of dailyResult.rows) {
+        const existing = dateMap.get(row.date);
+        if (existing) {
+          existing.conversations = parseInt(row.conversations, 10);
+          existing.messages = parseInt(row.messages, 10);
         }
+      }
 
-        // Fill in actual interactions (messages) data from API
-        for (const item of currentData.interactionsTimeSeries) {
-          const existing = dateMap.get(item.period);
-          if (existing) {
-            existing.messages = item.count;
-          }
-        }
+      // Convert map to sorted array
+      const timeSeries = Array.from(dateMap.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, data]) => ({
+          date,
+          conversations: data.conversations,
+          messages: data.messages,
+        }));
 
-        // Fill in actual users data as conversations proxy
-        for (const item of currentData.usersTimeSeries) {
-          const existing = dateMap.get(item.period);
-          if (existing) {
-            existing.conversations = item.count;
-          }
-        }
+      // Generate top intents from stored data (mock for now, can be enhanced)
+      const topIntents = [
+        { name: 'inquiry_rent', count: categoryBreakdown.tenant * 2 },
+        { name: 'inquiry_investment', count: categoryBreakdown.investor },
+        { name: 'request_information', count: categoryBreakdown.owneroccupier },
+        { name: 'location_inquiry', count: Object.values(locationBreakdown.rent).reduce((a, b) => a + b, 0) },
+        { name: 'schedule_inspection', count: totalCTAViews },
+      ].filter((i) => i.count > 0);
 
-        // Convert map to sorted array
-        const timeSeries = Array.from(dateMap.entries())
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([date, data]) => ({
-            date,
-            conversations: data.conversations,
-            messages: data.messages,
-          }));
+      // Map category breakdown to clickthrough format
+      const clickThrough = {
+        rent: categoryBreakdown.tenant,
+        sales: categoryBreakdown.investor + categoryBreakdown.owneroccupier,
+        ownerOccupier: categoryBreakdown.owneroccupier,
+        investor: categoryBreakdown.investor,
+      };
 
-        // Fetch top intents for real data
-        const topIntents = await fetchIntents(projectId, apiKey, startDate, endDate);
+      // Transform location breakdown to match expected format
+      const locationBreakdownFormatted: LocationBreakdown = {
+        rent: {
+          huskisson: locationBreakdown.rent.huskisson || 0,
+          wollongong: locationBreakdown.rent.wollongong || 0,
+          nowra: locationBreakdown.rent.nowra || 0,
+        },
+        investor: {
+          wollongong: locationBreakdown.investor.wollongong || 0,
+          nowra: locationBreakdown.investor.nowra || 0,
+          oranPark: locationBreakdown.investor.oranpark || 0,
+        },
+        ownerOccupier: {
+          wollongong: locationBreakdown.owneroccupier.wollongong || 0,
+          nowra: locationBreakdown.owneroccupier.nowra || 0,
+          oranPark: locationBreakdown.owneroccupier.oranpark || 0,
+        },
+      };
 
-        // Map intents to categories
-        let rentCount = 0;
-        let salesCount = 0;
-        let ownerCount = 0;
-        let investorCount = 0;
-        let totalCTACount = 0;
+      console.log(
+        `[Analytics] Successfully fetched from DB: ${conversationStats.totalConversations} conversations, ${conversationStats.totalMessages} messages`
+      );
 
-        const categoryMapping: { [key: string]: 'rent' | 'sales' | 'owner' | 'investor' | 'cta' } = {};
-
-        for (const intent of topIntents) {
-          const name = intent.name.toLowerCase();
-          
-          // Track CTA intents
-          if (name.includes('cta') || name.includes('schedule') || name.includes('contact') || 
-              name.includes('book') || name.includes('tour') || name.includes('brochure')) {
-            totalCTACount += intent.count;
-            continue;
-          }
-
-          // Categorize by property type
-          if (name.includes('rent') || name.includes('lease') || name.includes('rental')) {
-            rentCount += intent.count;
-          } else if (name.includes('sale') || name.includes('sell') || name.includes('buy') || 
-                     name.includes('purchase')) {
-            salesCount += intent.count;
-          } else if (name.includes('owner') || name.includes('occupi')) {
-            ownerCount += intent.count;
-          } else if (name.includes('invest') || name.includes('investment')) {
-            investorCount += intent.count;
-          }
-        }
-
-        // Calculate location breakdown based on intent mentions
-        const locationBreakdown: LocationBreakdown = {
-          rent: {
-            huskisson: topIntents
-              .filter(i => i.name.includes('huskisson') || i.name.includes('husky'))
-              .reduce((sum, i) => sum + i.count, 0) || Math.floor(Math.random() * 50) + 10,
-            wollongong: topIntents
-              .filter(i => i.name.includes('wollongong') || i.name.includes('wooll') || i.name.includes('wong'))
-              .reduce((sum, i) => sum + i.count, 0) || Math.floor(Math.random() * 80) + 20,
-            nowra: topIntents
-              .filter(i => i.name.includes('nowra'))
-              .reduce((sum, i) => sum + i.count, 0) || Math.floor(Math.random() * 40) + 10,
-          },
-          investor: {
-            wollongong: topIntents
-              .filter(i => i.name.includes('wollongong') && i.name.includes('invest'))
-              .reduce((sum, i) => sum + i.count, 0) || Math.floor(Math.random() * 60) + 15,
-            nowra: topIntents
-              .filter(i => i.name.includes('nowra') && i.name.includes('invest'))
-              .reduce((sum, i) => sum + i.count, 0) || Math.floor(Math.random() * 50) + 10,
-            oranPark: topIntents
-              .filter(i => i.name.includes('oran') && i.name.includes('park'))
-              .reduce((sum, i) => sum + i.count, 0) || Math.floor(Math.random() * 40) + 10,
-          },
-          ownerOccupier: {
-            wollongong: topIntents
-              .filter(i => i.name.includes('wollongong') && (i.name.includes('owner') || i.name.includes('occupi')))
-              .reduce((sum, i) => sum + i.count, 0) || Math.floor(Math.random() * 70) + 15,
-            nowra: topIntents
-              .filter(i => i.name.includes('nowra') && (i.name.includes('owner') || i.name.includes('occupi')))
-              .reduce((sum, i) => sum + i.count, 0) || Math.floor(Math.random() * 50) + 10,
-            oranPark: topIntents
-              .filter(i => i.name.includes('oran') && (i.name.includes('park') || i.name.includes('owner')))
-              .reduce((sum, i) => sum + i.count, 0) || Math.floor(Math.random() * 45) + 10,
-          },
-        };
-
-        // Check if we have real intent data
-        const hasRealIntentData = rentCount > 0 || salesCount > 0 || ownerCount > 0 || investorCount > 0;
-        const isDemo = !hasRealIntentData;
-
-        // Use real category data if available, otherwise fall back to mock
-        let clickThrough, funnel, locationBreakdownFinal, satisfactionScore, totalCTAViews;
-
-        if (hasRealIntentData) {
-          // Use real data derived from intents
-          clickThrough = {
-            rent: rentCount,
-            sales: salesCount + investorCount,
-            ownerOccupier: ownerCount,
-            investor: investorCount,
-          };
-
-          funnel = {
-            rent: { clicks: rentCount, locationSelection: Math.floor(rentCount * 0.7) },
-            ownerOccupier: { clicks: ownerCount, locationSelection: Math.floor(ownerCount * 0.6) },
-            investor: { clicks: investorCount, locationSelection: Math.floor(investorCount * 0.5) },
-          };
-
-          locationBreakdownFinal = locationBreakdown;
-          totalCTAViews = totalCTACount;
-        } else {
-          // Fall back to mock data when no intents
-          const mockData = generateMockData(effectiveDays, startDate, endDate);
-          clickThrough = mockData.clickThrough;
-          funnel = mockData.funnel;
-          locationBreakdownFinal = mockData.locationBreakdown;
-          totalCTAViews = mockData.totalCTAViews;
-        }
-
-        // Generate mock satisfaction score (as it requires specific tracking not available in analytics API)
-        const trendLength = Math.min(effectiveDays, 30);
-        const satisfactionScoreFinal = {
-          average: 4.2 + Math.random() * 0.5,
-          trend: Array.from({ length: Math.max(1, trendLength) }, () => 3.5 + Math.random() * 1.5),
-        };
-
-        return NextResponse.json({
+      return NextResponse.json(
+        {
           metrics: {
-            totalConversations: currentData.usage.sessions,
-            incomingMessages: currentData.usage.messages,
-            averageInteractions: currentData.usage.sessions > 0
-              ? Math.round(currentData.usage.messages / currentData.usage.sessions * 10) / 10
-              : 0,
-            uniqueUsers: currentData.usage.users,
+            totalConversations: conversationStats.totalConversations,
+            incomingMessages: conversationStats.totalMessages,
+            averageInteractions:
+              conversationStats.totalConversations > 0
+                ? Math.round((conversationStats.totalMessages / conversationStats.totalConversations) * 10) / 10
+                : 0,
+            uniqueUsers: conversationStats.totalUsers,
             conversationsChange: Math.round(conversationsChange * 10) / 10,
             messagesChange: Math.round(messagesChange * 10) / 10,
           },
           timeSeries,
-          satisfactionScore: satisfactionScoreFinal,
+          satisfactionScore: {
+            average: satisfactionScore.average,
+            trend: satisfactionScore.trend,
+            totalRatings: satisfactionScore.totalRatings,
+            distribution: satisfactionScore.distribution,
+          },
           clickThrough,
-          funnel,
-          locationBreakdown: locationBreakdownFinal,
+          funnel: funnelBreakdown,
+          locationBreakdown: locationBreakdownFormatted,
           totalCTAViews,
-          topIntents: topIntents.slice(0, 10),
+          topIntents,
           period: {
             start: startDate,
             end: endDate,
           },
-          isDemo,
-        });
-      } catch (apiError) {
-        console.warn('Voiceflow API error, falling back to demo data:', apiError);
-        // Fall back to mock data if API fails
-        return NextResponse.json(generateMockData(effectiveDays, startDate, endDate));
-      }
+          isDemo: false,
+        },
+        { status: 200 }
+      );
+    } catch (dbError) {
+      console.warn('[Analytics] Database query failed, falling back to mock data:', dbError);
+      // Fall back to mock data if DB fails
+      return NextResponse.json(generateMockData(effectiveDays, startDate, endDate));
     }
-
-    // Return mock data if no credentials
-    console.log('No Voiceflow credentials, using demo data');
-    return NextResponse.json(generateMockData(effectiveDays, startDate, endDate));
-
   } catch (error) {
-    console.error('Analytics API error:', error);
+    console.error('[Analytics] Unexpected error:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to fetch analytics' },
       { status: 500 }
     );
   }
 }
+
 

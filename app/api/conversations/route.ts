@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchTranscriptSummaries } from '@/lib/voiceflowTranscripts';
-import { getApiKey, getProjectId } from '@/lib/env';
-import type {
-  ConversationFilters,
-  TranscriptListResponse,
-  TranscriptSummary,
-} from '@/types/conversations';
+import { fetchTranscriptSummariesFromDB } from '@/lib/conversationQueries';
+import type { ConversationFilters, TranscriptListResponse, TranscriptSummary } from '@/types/conversations';
 
 const MOCK_USERS = [
   { id: 'new-user-8472', platform: 'web' },
@@ -72,18 +67,23 @@ function generateMockTranscripts(count = 8): TranscriptListResponse {
 
 export async function GET(request: NextRequest) {
   const filters = parseFilters(request);
-  const projectId = getProjectId();
-  const apiKey = getApiKey();
-
-  if (!projectId || !apiKey) {
-    return NextResponse.json(generateMockTranscripts(), { status: 200 });
-  }
 
   try {
-    const data = await fetchTranscriptSummaries(projectId, apiKey, filters);
-    return NextResponse.json(data, { status: 200 });
+    console.log('[Conversations] Fetching transcripts from database...');
+    const data = await fetchTranscriptSummariesFromDB(filters);
+    
+    // If no data from DB, fall back to mock
+    if (data.items.length === 0) {
+      console.log('[Conversations] No transcripts in database, returning mock data');
+      return NextResponse.json(generateMockTranscripts(), { status: 200 });
+    }
+
+    return NextResponse.json(
+      { ...data, isDemo: false },
+      { status: 200 }
+    );
   } catch (error) {
-    console.warn('Voiceflow transcript summaries failed, returning mock data:', error);
+    console.warn('[Conversations] Database query failed, returning mock data:', error);
     const response = generateMockTranscripts();
     return NextResponse.json(response, { status: 200 });
   }

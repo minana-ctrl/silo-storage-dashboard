@@ -153,7 +153,7 @@ function extractTextFromPayload(payload: unknown): string | undefined {
   return undefined;
 }
 
-function mapLogToTurn(log: VoiceflowTranscriptLog, idx: number): TranscriptTurn | null {
+export function mapLogToTurn(log: VoiceflowTranscriptLog, idx: number): TranscriptTurn | null {
   const payloadFromRoot = (log as unknown as { payload?: unknown }).payload;
   let content: string | undefined;
   let role: TranscriptTurn['role'] = 'system';
