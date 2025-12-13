@@ -21,7 +21,7 @@ export async function getCategoryBreakdown(
       typeuser,
       COUNT(*) as count
     FROM public.vf_sessions
-    WHERE started_at >= $1 AND started_at <= $2
+    WHERE started_at >= $1::date AND started_at < ($2::date + INTERVAL '1 day')
       AND typeuser IS NOT NULL
     GROUP BY typeuser
     `,
@@ -50,13 +50,13 @@ export async function getLocationBreakdown(
     `
     SELECT 
       location_type,
-      location_value,
+      LOWER(TRIM(location_value)) as location_value,
       COUNT(*) as count
     FROM public.vf_sessions
-    WHERE started_at >= $1 AND started_at <= $2
+    WHERE started_at >= $1::date AND started_at < ($2::date + INTERVAL '1 day')
       AND location_type IS NOT NULL
       AND location_value IS NOT NULL
-    GROUP BY location_type, location_value
+    GROUP BY location_type, LOWER(TRIM(location_value))
     `,
     [startDate, endDate]
   );
@@ -68,8 +68,10 @@ export async function getLocationBreakdown(
   };
 
   for (const row of result.rows) {
-    const locType = row.location_type as keyof typeof breakdown;
-    const locValue = row.location_value as string;
+    // Map location_type to breakdown key (rental → rent)
+    const locTypeKey = row.location_type === 'rental' ? 'rent' : row.location_type;
+    const locType = locTypeKey as keyof typeof breakdown;
+    const locValue = row.location_value;
     const count = parseInt(row.count, 10);
 
     if (locType in breakdown && locValue in breakdown[locType]) {
@@ -98,7 +100,7 @@ export async function getSatisfactionScore(
       COUNT(*) as count,
       started_at::date as date
     FROM public.vf_sessions
-    WHERE started_at >= $1 AND started_at <= $2
+    WHERE started_at >= $1::date AND started_at < ($2::date + INTERVAL '1 day')
       AND rating IS NOT NULL
     GROUP BY rating, started_at::date
     ORDER BY started_at::date, rating
@@ -165,7 +167,7 @@ export async function getFeedback(
       started_at as timestamp,
       transcript_id as "transcriptId"
     FROM public.vf_sessions
-    WHERE started_at >= $1 AND started_at <= $2
+    WHERE started_at >= $1::date AND started_at < ($2::date + INTERVAL '1 day')
       AND feedback IS NOT NULL
       AND rating <= 3
     ORDER BY started_at DESC
@@ -198,7 +200,7 @@ export async function getFunnelBreakdown(
       typeuser,
       COUNT(*) as count
     FROM public.vf_sessions
-    WHERE started_at >= $1 AND started_at <= $2
+    WHERE started_at >= $1::date AND started_at < ($2::date + INTERVAL '1 day')
       AND typeuser IS NOT NULL
     GROUP BY typeuser
     `,
@@ -212,7 +214,7 @@ export async function getFunnelBreakdown(
       typeuser,
       COUNT(*) as count
     FROM public.vf_sessions
-    WHERE started_at >= $1 AND started_at <= $2
+    WHERE started_at >= $1::date AND started_at < ($2::date + INTERVAL '1 day')
       AND typeuser IS NOT NULL
       AND location_value IS NOT NULL
     GROUP BY typeuser
@@ -259,7 +261,7 @@ export async function getConversationStats(
     `
     SELECT COUNT(*) as count
     FROM public.vf_sessions
-    WHERE started_at >= $1 AND started_at <= $2
+    WHERE started_at >= $1::date AND started_at < ($2::date + INTERVAL '1 day')
     `,
     [startDate, endDate]
   );
@@ -268,7 +270,7 @@ export async function getConversationStats(
     `
     SELECT COUNT(*) as count
     FROM public.vf_turns
-    WHERE timestamp >= $1 AND timestamp <= $2
+    WHERE timestamp >= $1::date AND timestamp < ($2::date + INTERVAL '1 day')
       AND role IN ('user', 'assistant')
     `,
     [startDate, endDate]
@@ -278,7 +280,7 @@ export async function getConversationStats(
     `
     SELECT COUNT(DISTINCT user_id) as count
     FROM public.vf_sessions
-    WHERE started_at >= $1 AND started_at <= $2
+    WHERE started_at >= $1::date AND started_at < ($2::date + INTERVAL '1 day')
       AND user_id IS NOT NULL
     `,
     [startDate, endDate]
@@ -299,7 +301,7 @@ export async function getCTAMetrics(startDate: string, endDate: string): Promise
     `
     SELECT COUNT(*) as count
     FROM public.vf_events
-    WHERE event_ts >= $1 AND event_ts <= $2
+    WHERE event_ts >= $1::date AND event_ts < ($2::date + INTERVAL '1 day')
       AND event_type = 'cta_clicked'
     `,
     [startDate, endDate]
@@ -321,7 +323,7 @@ export async function getCTABreakdown(
       cta_name,
       COUNT(*) as count
     FROM public.vf_events
-    WHERE event_ts >= $1 AND event_ts <= $2
+    WHERE event_ts >= $1::date AND event_ts < ($2::date + INTERVAL '1 day')
       AND event_type = 'cta_clicked'
       AND cta_name IS NOT NULL
     GROUP BY cta_name
