@@ -126,7 +126,7 @@ export async function fetchTranscriptDialogFromDB(transcriptId: string): Promise
       payload as raw
     FROM public.vf_turns
     WHERE transcript_row_id = (
-      SELECT id FROM public.vf_transcripts WHERE transcript_id = $1
+      SELECT id FROM public.vf_transcripts WHERE transcript_id = $1 OR id::text = $1
     )
     ORDER BY turn_index ASC
     `,
@@ -172,7 +172,7 @@ export async function fetchTranscriptByIdFromDB(transcriptId: string): Promise<T
       EXTRACT(EPOCH FROM (t.ended_at - t.started_at))::int as "durationSeconds"
     FROM public.vf_transcripts t
     LEFT JOIN public.vf_turns vt ON vt.transcript_row_id = t.id
-    WHERE t.transcript_id = $1 OR t.id = $1
+    WHERE t.transcript_id = $1 OR t.id::text = $1
     GROUP BY t.id, t.transcript_id, t.session_id, t.user_id, t.started_at, t.ended_at, t.updated_at, t.created_at
     `,
     [transcriptId]

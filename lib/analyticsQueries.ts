@@ -1,7 +1,7 @@
 import { query } from '@/lib/db';
 import type {
   LocationBreakdownActual,
-  CategoryBreakdown,
+  CategoryBreakdownByTypeuser,
   SatisfactionScoreData,
   FeedbackData,
   RatingDistribution,
@@ -14,7 +14,7 @@ import type {
 export async function getCategoryBreakdown(
   startDate: string,
   endDate: string
-): Promise<CategoryBreakdown> {
+): Promise<CategoryBreakdownByTypeuser> {
   const result = await query<{ typeuser: string; count: string }>(
     `
     SELECT 

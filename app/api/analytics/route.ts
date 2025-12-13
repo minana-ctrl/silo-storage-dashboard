@@ -208,15 +208,26 @@ export async function POST(request: NextRequest) {
       }>(
         `
         SELECT 
-          started_at::date as date,
-          COUNT(*) as conversations,
-          (SELECT COUNT(*) FROM public.vf_turns 
-           WHERE timestamp::date = started_at::date 
-           AND role IN ('user', 'assistant')) as messages
-        FROM public.vf_sessions
-        WHERE started_at >= $1 AND started_at <= $2
-        GROUP BY started_at::date
-        ORDER BY started_at::date
+          s.date,
+          COUNT(DISTINCT s.session_id) as conversations,
+          COALESCE(SUM(t.message_count), 0) as messages
+        FROM (
+          SELECT 
+            session_id,
+            started_at::date as date
+          FROM public.vf_sessions
+          WHERE started_at >= $1 AND started_at <= $2
+        ) s
+        LEFT JOIN (
+          SELECT 
+            session_id,
+            COUNT(*) as message_count
+          FROM public.vf_turns
+          WHERE role IN ('user', 'assistant')
+          GROUP BY session_id
+        ) t ON s.session_id = t.session_id
+        GROUP BY s.date
+        ORDER BY s.date
         `,
         [startDate, endDate]
       );
