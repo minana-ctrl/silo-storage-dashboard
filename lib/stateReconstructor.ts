@@ -35,18 +35,35 @@ function deriveLocationValue(vars: any): string | null {
 
 /**
  * Find a variable in transcript traces
- * Searches through logs for "set" traces that match a variable name
+ * Searches through logs for "set" traces or debug traces with variable changes
  */
 function findVariableInTraces(logs: any[], variableName: string): string | null {
   if (!logs || logs.length === 0) return null;
 
   for (const log of logs) {
-    // Look for set traces
+    // Look for set traces (old format)
     if (log.type === 'trace' && log.data?.type === 'set') {
       const payload = log.data.payload;
       if (payload && payload.key === variableName && payload.value) {
         return String(payload.value);
       }
+    }
+
+    // Look for debug traces with set-v3 nodes and variable diffs (Voiceflow SDK format)
+    if (log.type === 'trace' && log.data?.type === 'debug') {
+      const payload = log.data.payload;
+      if (payload?.ref?.nodeType === 'set-v3' && payload?.metadata?.diff?.[variableName]) {
+        const varChange = payload.metadata.diff[variableName];
+        if (varChange.after !== undefined) {
+          return String(varChange.after);
+        }
+      }
+    }
+
+    // Look for action traces with variable payloads (user selections)
+    if (log.type === 'action' && log.data?.type && typeof log.data.type === 'string' && log.data.type.startsWith('path-')) {
+      // This is a path selection - skip, we get this from debug traces
+      continue;
     }
   }
 
@@ -88,10 +105,19 @@ function findTimestampForVariable(logs: any[], variableName: string): string {
   if (!logs || logs.length === 0) return new Date().toISOString();
 
   for (const log of logs) {
+    // Old format: set traces
     if (log.type === 'trace' && log.data?.type === 'set') {
       const payload = log.data.payload;
       if (payload && payload.key === variableName) {
-        return log.timestamp || log.createdAt || new Date().toISOString();
+        return log.data?.time ? new Date(log.data.time).toISOString() : log.createdAt || new Date().toISOString();
+      }
+    }
+
+    // New format: debug traces with set-v3 nodes
+    if (log.type === 'trace' && log.data?.type === 'debug') {
+      const payload = log.data.payload;
+      if (payload?.ref?.nodeType === 'set-v3' && payload?.metadata?.diff?.[variableName]) {
+        return log.data?.time ? new Date(log.data.time).toISOString() : log.createdAt || new Date().toISOString();
       }
     }
   }
