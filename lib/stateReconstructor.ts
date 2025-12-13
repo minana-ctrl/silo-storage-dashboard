@@ -3,32 +3,34 @@ import type { TranscriptTurn } from '@/types/conversations';
 
 /**
  * Derive location type based on typeuser
+ * Looks for type-specific location variables AND generic "location" variable
  */
 function deriveLocationType(vars: any): 'rental' | 'investor' | 'owneroccupier' | null {
   if (vars.typeuser === 'tenant') {
-    return vars.rentallocation ? 'rental' : null;
+    return vars.rentallocation || vars.location ? 'rental' : null;
   }
   if (vars.typeuser === 'investor') {
-    return vars.investorlocation ? 'investor' : null;
+    return vars.investorlocation || vars.location ? 'investor' : null;
   }
   if (vars.typeuser === 'owneroccupier') {
-    return vars.owneroccupierlocation ? 'owneroccupier' : null;
+    return vars.owneroccupierlocation || vars.location ? 'owneroccupier' : null;
   }
   return null;
 }
 
 /**
  * Derive location value based on typeuser
+ * Checks type-specific location variables first, then falls back to generic "location"
  */
 function deriveLocationValue(vars: any): string | null {
-  if (vars.typeuser === 'tenant' && vars.rentallocation) {
-    return vars.rentallocation;
+  if (vars.typeuser === 'tenant' && (vars.rentallocation || vars.location)) {
+    return vars.rentallocation || vars.location;
   }
-  if (vars.typeuser === 'investor' && vars.investorlocation) {
-    return vars.investorlocation;
+  if (vars.typeuser === 'investor' && (vars.investorlocation || vars.location)) {
+    return vars.investorlocation || vars.location;
   }
-  if (vars.typeuser === 'owneroccupier' && vars.owneroccupierlocation) {
-    return vars.owneroccupierlocation;
+  if (vars.typeuser === 'owneroccupier' && (vars.owneroccupierlocation || vars.location)) {
+    return vars.owneroccupierlocation || vars.location;
   }
   return null;
 }
@@ -72,27 +74,40 @@ function findVariableInTraces(logs: any[], variableName: string): string | null 
 
 /**
  * Find location-related variable in traces
+ * Looks for both specific names (rentallocation, investorlocation, owneroccupierlocation)
+ * AND generic "location" variable used by Voiceflow
  */
 function findLocationInTraces(logs: any[], typeuser: string | undefined): { type: string; value: string } | null {
   if (!logs || logs.length === 0) return null;
 
-  const locationVarName =
+  const locationVarNames =
     typeuser === 'tenant'
-      ? 'rentallocation'
+      ? ['rentallocation', 'location']
       : typeuser === 'investor'
-        ? 'investorlocation'
+        ? ['investorlocation', 'location']
         : typeuser === 'owneroccupier'
-          ? 'owneroccupierlocation'
-          : null;
+          ? ['owneroccupierlocation', 'location']
+          : [];
 
-  if (!locationVarName) return null;
+  if (locationVarNames.length === 0) return null;
 
-  const location = findVariableInTraces(logs, locationVarName);
-  if (location) {
-    return {
-      type: locationVarName,
-      value: location,
-    };
+  // Try each possible variable name
+  for (const varName of locationVarNames) {
+    const location = findVariableInTraces(logs, varName);
+    if (location) {
+      // Map generic "location" to the appropriate type-specific name
+      const mappedType =
+        typeuser === 'tenant'
+          ? 'rental'
+          : typeuser === 'investor'
+            ? 'investor'
+            : 'owneroccupier';
+
+      return {
+        type: mappedType,
+        value: location,
+      };
+    }
   }
 
   return null;
@@ -157,10 +172,13 @@ export function reconstructState(
 
   // 3. Get location from properties or traces
   let locationValue = deriveLocationValue(vars);
+  let locationType = deriveLocationType({ ...vars, typeuser });
+  
   if (!locationValue && typeuser) {
     const tracedLocation = findLocationInTraces(logs, typeuser);
     if (tracedLocation) {
       locationValue = tracedLocation.value;
+      locationType = tracedLocation.type as 'rental' | 'investor' | 'owneroccupier';
     }
   }
 
@@ -176,7 +194,7 @@ export function reconstructState(
 
   return {
     typeuser,
-    location_type: deriveLocationType({ ...vars, typeuser }),
+    location_type: locationType,
     location_value: locationValue,
     rating,
     feedback,
