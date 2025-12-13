@@ -1,113 +1,107 @@
 -- Voiceflow Sessions Table (analytics-ready final state)
-create table if not exists public.vf_sessions (
-  id uuid primary key default gen_random_uuid(),
-  session_id text not null unique,
-  user_id text null,
+CREATE TABLE IF NOT EXISTS public.vf_sessions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id text NOT NULL UNIQUE,
+  user_id text NULL,
   
-  transcript_id text null,
-  transcript_row_id uuid null references public.vf_transcripts(id),
+  transcript_id text NULL,
+  transcript_row_id uuid NULL REFERENCES public.vf_transcripts(id),
   
-  typeuser text null check (typeuser in ('tenant','investor','owneroccupier')),
-  location_type text null check (location_type in ('rental','investor','owneroccupier')),
-  location_value text null,
+  typeuser text NULL CHECK (typeuser in ('tenant','investor','owneroccupier')),
+  location_type text NULL CHECK (location_type in ('rental','investor','owneroccupier')),
+  location_value text NULL,
   
-  rating int null check (rating between 1 and 5),
-  feedback text null,
-  constraint feedback_rule check (
-    feedback is null OR (rating is not null and rating between 1 and 3)
+  rating int NULL CHECK (rating between 1 and 5),
+  feedback text NULL,
+  CONSTRAINT feedback_rule CHECK (
+    feedback IS NULL OR (rating IS NOT NULL AND rating between 1 and 3)
   ),
   
-  started_at timestamptz null,
-  ended_at timestamptz null,
+  started_at timestamptz NULL,
+  ended_at timestamptz NULL,
   
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-create index if not exists idx_vf_sessions_typeuser on public.vf_sessions (typeuser);
-create index if not exists idx_vf_sessions_location on public.vf_sessions (location_type, location_value);
-create index if not exists idx_vf_sessions_created_at on public.vf_sessions (created_at);
-create index if not exists idx_vf_sessions_transcript_id on public.vf_sessions (transcript_id);
-
----
+CREATE INDEX IF NOT EXISTS idx_vf_sessions_typeuser ON public.vf_sessions (typeuser);
+CREATE INDEX IF NOT EXISTS idx_vf_sessions_location ON public.vf_sessions (location_type, location_value);
+CREATE INDEX IF NOT EXISTS idx_vf_sessions_created_at ON public.vf_sessions (created_at);
+CREATE INDEX IF NOT EXISTS idx_vf_sessions_transcript_id ON public.vf_sessions (transcript_id);
 
 -- Voiceflow Events Table (funnel tracking + CTA visibility)
-create table if not exists public.vf_events (
-  id uuid primary key default gen_random_uuid(),
-  session_id text not null references public.vf_sessions(session_id),
-  user_id text null,
+CREATE TABLE IF NOT EXISTS public.vf_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id text NOT NULL REFERENCES public.vf_sessions(session_id),
+  user_id text NULL,
   
-  event_type text not null,
-  event_ts timestamptz not null default now(),
+  event_type text NOT NULL,
+  event_ts timestamptz NOT NULL DEFAULT now(),
   
-  typeuser text null check (typeuser in ('tenant','investor','owneroccupier')),
-  location_type text null check (location_type in ('rental','investor','owneroccupier')),
-  location_value text null,
-  rating int null check (rating between 1 and 5),
-  feedback text null,
+  typeuser text NULL CHECK (typeuser in ('tenant','investor','owneroccupier')),
+  location_type text NULL CHECK (location_type in ('rental','investor','owneroccupier')),
+  location_value text NULL,
+  rating int NULL CHECK (rating between 1 and 5),
+  feedback text NULL,
   
-  cta_id text null,
-  cta_name text null,
+  cta_id text NULL,
+  cta_name text NULL,
   
-  meta jsonb not null default '{}'::jsonb
+  meta jsonb NOT NULL DEFAULT '{}'::jsonb
 );
 
-create index if not exists idx_vf_events_session_ts on public.vf_events (session_id, event_ts);
-create index if not exists idx_vf_events_type_ts on public.vf_events (event_type, event_ts);
-create index if not exists idx_vf_events_cta_id on public.vf_events (cta_id);
-
----
+CREATE INDEX IF NOT EXISTS idx_vf_events_session_ts ON public.vf_events (session_id, event_ts);
+CREATE INDEX IF NOT EXISTS idx_vf_events_type_ts ON public.vf_events (event_type, event_ts);
+CREATE INDEX IF NOT EXISTS idx_vf_events_cta_id ON public.vf_events (cta_id);
 
 -- Voiceflow Transcripts Table (raw storage)
-create table if not exists public.vf_transcripts (
-  id uuid primary key default gen_random_uuid(),
-  transcript_id text null unique,
-  session_id text not null,
-  user_id text null,
+CREATE TABLE IF NOT EXISTS public.vf_transcripts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  transcript_id text NULL UNIQUE,
+  session_id text NOT NULL,
+  user_id text NULL,
   
-  source text not null default 'voiceflow',
+  source text NOT NULL DEFAULT 'voiceflow',
   
-  started_at timestamptz null,
-  ended_at timestamptz null,
+  started_at timestamptz NULL,
+  ended_at timestamptz NULL,
   
-  raw jsonb not null,
-  raw_hash text null,
+  raw jsonb NOT NULL,
+  raw_hash text NULL,
   
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-create index if not exists idx_vf_transcripts_session_id on public.vf_transcripts (session_id);
-create index if not exists idx_vf_transcripts_transcript_id on public.vf_transcripts (transcript_id);
-create index if not exists idx_vf_transcripts_created_at on public.vf_transcripts (created_at);
-
----
+CREATE INDEX IF NOT EXISTS idx_vf_transcripts_session_id ON public.vf_transcripts (session_id);
+CREATE INDEX IF NOT EXISTS idx_vf_transcripts_transcript_id ON public.vf_transcripts (transcript_id);
+CREATE INDEX IF NOT EXISTS idx_vf_transcripts_created_at ON public.vf_transcripts (created_at);
 
 -- Voiceflow Turns Table (normalized messages)
-create table if not exists public.vf_turns (
-  id uuid primary key default gen_random_uuid(),
-  transcript_row_id uuid not null references public.vf_transcripts(id) on delete cascade,
-  session_id text not null,
+CREATE TABLE IF NOT EXISTS public.vf_turns (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  transcript_row_id uuid NOT NULL REFERENCES public.vf_transcripts(id) ON DELETE CASCADE,
+  session_id text NOT NULL,
   
-  turn_index int not null,
-  role text not null check (role in ('user','assistant','system','tool','trace')),
+  turn_index int NOT NULL,
+  role text NOT NULL CHECK (role in ('user','assistant','system','tool','trace')),
   
-  text text null,
-  payload jsonb not null default '{}'::jsonb,
+  text text NULL,
+  payload jsonb NOT NULL DEFAULT '{}'::jsonb,
   
-  timestamp timestamptz null,
+  timestamp timestamptz NULL,
   
-  created_at timestamptz not null default now(),
+  created_at timestamptz NOT NULL DEFAULT now(),
   
-  unique (transcript_row_id, turn_index)
+  UNIQUE (transcript_row_id, turn_index)
 );
 
-create index if not exists idx_vf_turns_session_turn on public.vf_turns (session_id, turn_index);
-create index if not exists idx_vf_turns_transcript_id on public.vf_turns (transcript_row_id);
-create index if not exists idx_vf_turns_role on public.vf_turns (role);
+CREATE INDEX IF NOT EXISTS idx_vf_turns_session_turn ON public.vf_turns (session_id, turn_index);
+CREATE INDEX IF NOT EXISTS idx_vf_turns_transcript_id ON public.vf_turns (transcript_row_id);
+CREATE INDEX IF NOT EXISTS idx_vf_turns_role ON public.vf_turns (role);
 
 -- Full-text search for keywords/topics
-alter table public.vf_turns
-add column if not exists text_tsv tsvector generated always as (to_tsvector('english', coalesce(text,''))) stored;
+ALTER TABLE public.vf_turns
+ADD COLUMN IF NOT EXISTS text_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', COALESCE(text,''))) STORED;
 
-create index if not exists idx_vf_turns_text_tsv on public.vf_turns using gin (text_tsv);
+CREATE INDEX IF NOT EXISTS idx_vf_turns_text_tsv ON public.vf_turns USING gin (text_tsv);
