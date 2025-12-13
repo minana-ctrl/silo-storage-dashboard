@@ -266,31 +266,45 @@ export async function POST(request: NextRequest) {
           },
         };
 
-        // Use real category data if available
-        const clickThrough = {
-          rent: rentCount || Math.floor(Math.random() * 200) + 100,
-          sales: salesCount || Math.floor(Math.random() * 150) + 50,
-          ownerOccupier: ownerCount || Math.floor(Math.random() * 80) + 20,
-          investor: investorCount || Math.floor(Math.random() * 60) + 10,
-        };
+        // Check if we have real intent data
+        const hasRealIntentData = rentCount > 0 || salesCount > 0 || ownerCount > 0 || investorCount > 0;
+        const isDemo = !hasRealIntentData;
 
-        // Funnel based on real data
-        const funnel = {
-          rent: { clicks: clickThrough.rent, locationSelection: Math.floor(clickThrough.rent * 0.7) },
-          ownerOccupier: { clicks: clickThrough.ownerOccupier, locationSelection: Math.floor(clickThrough.ownerOccupier * 0.6) },
-          investor: { clicks: clickThrough.investor, locationSelection: Math.floor(clickThrough.investor * 0.5) },
-        };
+        // Use real category data if available, otherwise fall back to mock
+        let clickThrough, funnel, locationBreakdownFinal, satisfactionScore, totalCTAViews;
 
-        // Generate mock satisfaction score (as it requires specific tracking)
+        if (hasRealIntentData) {
+          // Use real data derived from intents
+          clickThrough = {
+            rent: rentCount,
+            sales: salesCount + investorCount,
+            ownerOccupier: ownerCount,
+            investor: investorCount,
+          };
+
+          funnel = {
+            rent: { clicks: rentCount, locationSelection: Math.floor(rentCount * 0.7) },
+            ownerOccupier: { clicks: ownerCount, locationSelection: Math.floor(ownerCount * 0.6) },
+            investor: { clicks: investorCount, locationSelection: Math.floor(investorCount * 0.5) },
+          };
+
+          locationBreakdownFinal = locationBreakdown;
+          totalCTAViews = totalCTACount;
+        } else {
+          // Fall back to mock data when no intents
+          const mockData = generateMockData(effectiveDays, startDate, endDate);
+          clickThrough = mockData.clickThrough;
+          funnel = mockData.funnel;
+          locationBreakdownFinal = mockData.locationBreakdown;
+          totalCTAViews = mockData.totalCTAViews;
+        }
+
+        // Generate mock satisfaction score (as it requires specific tracking not available in analytics API)
         const trendLength = Math.min(effectiveDays, 30);
-        const satisfactionScore = {
+        const satisfactionScoreFinal = {
           average: 4.2 + Math.random() * 0.5,
           trend: Array.from({ length: Math.max(1, trendLength) }, () => 3.5 + Math.random() * 1.5),
         };
-
-        // Calculate CTA views or use total count
-        const totalCTAViews = totalCTACount > 0 ? totalCTACount : 
-          clickThrough.rent + clickThrough.sales + clickThrough.ownerOccupier + clickThrough.investor;
 
         return NextResponse.json({
           metrics: {
@@ -304,17 +318,17 @@ export async function POST(request: NextRequest) {
             messagesChange: Math.round(messagesChange * 10) / 10,
           },
           timeSeries,
-          satisfactionScore,
+          satisfactionScore: satisfactionScoreFinal,
           clickThrough,
           funnel,
-          locationBreakdown,
+          locationBreakdown: locationBreakdownFinal,
           totalCTAViews,
           topIntents: topIntents.slice(0, 10),
           period: {
             start: startDate,
             end: endDate,
           },
-          isDemo: false,
+          isDemo,
         });
       } catch (apiError) {
         console.warn('Voiceflow API error, falling back to demo data:', apiError);

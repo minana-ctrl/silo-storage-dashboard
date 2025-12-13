@@ -34,10 +34,10 @@ function FunnelCategory({ title, data }: { title: string; data: FunnelStep }) {
                     </div>
                 </div>
                 <div className="flex flex-col gap-2">
-                    {/* Step 1: Clicks */}
+                    {/* Step 1: Type Selection (Initial Clicks) */}
                     <div className="relative">
                         <div className="flex justify-between text-xs mb-1 text-text-muted">
-                            <span>Total Clicks</span>
+                            <span>Type Selection</span>
                             <span>{data.clicks}</span>
                         </div>
                         <div className="overflow-hidden h-2 mb-4 text-xs flex rounded bg-red-100">
@@ -78,9 +78,9 @@ export default function FunnelBreakdown({ data }: FunnelBreakdownProps) {
     return (
         <div className="card p-6">
             <h3 className="font-heading text-lg text-secondary-black mb-4">Funnel Breakdown</h3>
-            <FunnelCategory title="Rent" data={data.rent} />
-            <FunnelCategory title="Owner Occupier" data={data.ownerOccupier} />
-            <FunnelCategory title="Investor" data={data.investor} />
+            <FunnelCategory title="Rent (Tenant Path)" data={data.rent} />
+            <FunnelCategory title="Owner Occupier (Sales Path)" data={data.ownerOccupier} />
+            <FunnelCategory title="Investor (Sales Path)" data={data.investor} />
         </div>
     );
 }

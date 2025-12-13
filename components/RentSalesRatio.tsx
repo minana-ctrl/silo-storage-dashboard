@@ -4,16 +4,18 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recha
 
 interface RentSalesRatioProps {
     data: {
-        rent: number;
+        tenant: number;
         sales: number;
+        investor: number;
+        owneroccupier: number;
     };
 }
 
 export default function RentSalesRatio({ data }: RentSalesRatioProps) {
-    const total = data.rent + data.sales;
+    const total = data.tenant + data.sales;
     
     const chartData = [
-        { name: 'Rent', value: data.rent },
+        { name: 'Rent (Tenant)', value: data.tenant },
         { name: 'Sales', value: data.sales },
     ];
 

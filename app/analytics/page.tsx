@@ -6,12 +6,13 @@ import TimeFilter from '@/components/TimeFilter';
 import ConversationsChart from '@/components/ConversationsChart';
 import MessagesChart from '@/components/MessagesChart';
 import CTAVisibility from '@/components/CTAVisibility';
-import LocationBreakdown from '@/components/LocationBreakdown';
+import LocationBreakdownComponent from '@/components/LocationBreakdown';
 import SubjectAnalysis from '@/components/SubjectAnalysis';
 import SatisfactionScore from '@/components/SatisfactionScore';
 import ClickThroughChart from '@/components/ClickThroughChart';
 import RentSalesRatio from '@/components/RentSalesRatio';
 import FunnelBreakdown from '@/components/FunnelBreakdown';
+import type { LocationBreakdown } from '@/types/analytics';
 
 interface AnalyticsData {
   metrics: {
@@ -94,17 +95,16 @@ export default function AnalyticsPage() {
 
   const handleCustomRangeChange = (startDate: string, endDate: string) => {
     setCustomRange({ startDate, endDate });
-    setSelectedDays(-1); // Set to -1 to indicate custom range
+    setSelectedDays(-1);
   };
 
   const handleDaysChange = (days: number) => {
     if (days !== -1) {
-      setCustomRange(null); // Clear custom range when selecting preset
+      setCustomRange(null);
     }
     setSelectedDays(days);
   };
 
-  // Format date range display
   const getDateRangeText = () => {
     if (customRange) {
       const start = new Date(customRange.startDate).toLocaleDateString('en-US', { 
@@ -123,6 +123,17 @@ export default function AnalyticsPage() {
     if (selectedDays === 0) return 'Today';
     if (selectedDays === 1) return 'Yesterday';
     return `Last ${selectedDays} days`;
+  };
+
+  // Prepare rent vs sales data from clickThrough metrics
+  const getRentSalesData = () => {
+    if (!data) return { tenant: 0, sales: 0, investor: 0, owneroccupier: 0 };
+    return {
+      tenant: data.clickThrough.rent,
+      sales: data.clickThrough.sales,
+      investor: data.clickThrough.investor,
+      owneroccupier: data.clickThrough.ownerOccupier,
+    };
   };
 
   return (
@@ -194,15 +205,15 @@ export default function AnalyticsPage() {
             <MessagesChart data={data.timeSeries} />
           </div>
 
-          {/* New Metrics Row 1 */}
+          {/* Satisfaction, Rent/Sales, and CTA Metrics Row */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
             <SatisfactionScore data={data.satisfactionScore} />
-            <RentSalesRatio data={data.clickThrough} />
+            <RentSalesRatio data={getRentSalesData()} />
             <CTAVisibility totalViews={data.totalCTAViews} />
           </div>
 
           {/* Location Breakdown */}
-          <LocationBreakdown data={data.locationBreakdown} />
+          <LocationBreakdownComponent data={data.locationBreakdown} />
 
           {/* Subject Analysis */}
           <div className="mb-8">

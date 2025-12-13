@@ -185,32 +185,27 @@ export async function fetchIntents(
 
   try {
     // Fetch top intents
-    // Note: 'top_intents' returns the most used intents with their counts
     const result = await fetchMetric(apiKey, projectId, 'top_intents', startTime, endTime);
 
-    if (!result.result?.items) {
+    console.log('Top intents result:', JSON.stringify(result).substring(0, 1000));
+
+    // Check for the correct response structure
+    // The API returns result.intents (not result.items)
+    if (!result.result?.intents || result.result.intents.length === 0) {
+      console.warn('No intents returned from API');
       return [];
     }
 
-    // Aggregate counts by intent name (which is in the 'type' or 'name' field depending on API version, 
-    // but for 'intents' metric, the item usually has a 'name' or 'type' property identifying the intent)
-    // Based on standard VF API, the grouping key is often in 'type' or 'name'. 
-    // Let's assume 'type' holds the intent name for now based on the AnalyticsItem interface.
-
-    const intentCounts = new Map<string, number>();
-
-    for (const item of result.result.items) {
-      // For 'intents' metric, the identifier is usually in 'type' or a specific field.
-      // If 'type' is missing, we might need to check other fields. 
-      // Assuming 'type' contains the intent name.
-      const name = item.type || 'Unknown';
-      const current = intentCounts.get(name) || 0;
-      intentCounts.set(name, current + (item.count || 0));
-    }
-
-    return Array.from(intentCounts.entries())
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count); // Sort by count desc
+    // Map the intents directly - they already have name and count
+    const intents = result.result.intents
+      .map((intent: any) => ({ 
+        name: intent.name || 'Unknown', 
+        count: intent.count || 0 
+      }))
+      .sort((a: any, b: any) => b.count - a.count);
+    
+    console.log('Processed intents:', intents);
+    return intents;
 
   } catch (error) {
     console.warn('Failed to fetch intents:', error);

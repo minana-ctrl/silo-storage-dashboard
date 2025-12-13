@@ -37,6 +37,12 @@ export interface LocationBreakdown {
   ownerOccupier: { wollongong: number; nowra: number; oranPark: number };
 }
 
+export interface LocationBreakdownActual {
+  rent: { wollongong: number; huskisson: number; nowra: number };
+  investor: { wollongong: number; nowra: number; oranpark: number };
+  owneroccupier: { wollongong: number; nowra: number; oranpark: number };
+}
+
 export interface SubjectAnalysis {
   topIntents: Array<{ name: string; count: number }>;
   topQuestions?: Array<{ question: string; count: number }>;
@@ -47,6 +53,36 @@ export interface CategoryBreakdown {
   sales: number;
   ownerOccupier: number;
   investor: number;
+}
+
+export interface CategoryBreakdownByTypeuser {
+  tenant: number;
+  investor: number;
+  owneroccupier: number;
+}
+
+export interface RatingDistribution {
+  rating: number;
+  count: number;
+}
+
+export interface FeedbackEntry {
+  rating: number;
+  text: string;
+  timestamp: string;
+  transcriptId: string;
+}
+
+export interface SatisfactionScoreData {
+  average: number;
+  trend: number[];
+  totalRatings: number;
+  distribution: RatingDistribution[];
+}
+
+export interface FeedbackData {
+  items: FeedbackEntry[];
+  totalCount: number;
 }
 
 
