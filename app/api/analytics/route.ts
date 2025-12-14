@@ -216,7 +216,7 @@ export async function POST(request: NextRequest) {
             session_id,
             started_at::date as date
           FROM public.vf_sessions
-          WHERE started_at >= $1 AND started_at <= $2
+          WHERE started_at >= $1::date AND started_at < ($2::date + INTERVAL '1 day')
         ) s
         LEFT JOIN (
           SELECT 
@@ -233,7 +233,12 @@ export async function POST(request: NextRequest) {
       );
 
       for (const row of dailyResult.rows) {
-        const existing = dateMap.get(row.date);
+        // Convert date to string format matching dateMap keys (YYYY-MM-DD)
+        const dateStr = typeof row.date === 'string' 
+          ? row.date 
+          : new Date(row.date).toISOString().split('T')[0];
+        
+        const existing = dateMap.get(dateStr);
         if (existing) {
           existing.conversations = parseInt(row.conversations, 10);
           existing.messages = parseInt(row.messages, 10);
