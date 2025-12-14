@@ -29,7 +29,8 @@ interface AnalyticsItem {
 interface AnalyticsResult {
   result: {
     cursor?: number;
-    items: AnalyticsItem[];
+    items?: AnalyticsItem[];
+    intents?: Array<{ name: string; count: number }>;
   };
 }
 

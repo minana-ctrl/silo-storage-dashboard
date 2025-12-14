@@ -133,9 +133,21 @@ export async function fetchTranscriptDialogFromDB(transcriptId: string): Promise
     [transcriptId]
   );
 
+  // Normalize roles: 'tool' and 'trace' should be mapped to valid TranscriptSpeaker types
+  const normalizeRole = (role: string): 'user' | 'assistant' | 'system' => {
+    if (role === 'user' || role === 'assistant' || role === 'system') {
+      return role;
+    }
+    // Map 'tool' and 'trace' to 'assistant' (they're typically system-generated)
+    if (role === 'tool' || role === 'trace') {
+      return 'assistant';
+    }
+    return 'system';
+  };
+
   return result.rows.map((row) => ({
     id: row.id,
-    role: row.role,
+    role: normalizeRole(row.role),
     content: row.content || '',
     timestamp: row.timestamp,
     traceType: undefined,

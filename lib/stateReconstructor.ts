@@ -192,7 +192,7 @@ export function reconstructState(
   }
 
   // 5. Extract feedback (only for ratings 1-3)
-  const feedback = rating && rating <= 3 ? vars.feedback : null;
+  const feedback = rating && rating <= 3 ? (vars.feedback || null) : null;
 
   // 6. Get timestamps
   const started_at = transcript.createdAt || transcript.started_at || new Date().toISOString();
