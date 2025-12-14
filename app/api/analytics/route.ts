@@ -127,12 +127,24 @@ export async function POST(request: NextRequest) {
       const end = new Date(customEndDate);
       effectiveDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
     } else {
-      effectiveDays = days || 7;
+      effectiveDays = days !== undefined ? days : 7;
       const now = new Date();
       endDate = now.toISOString().split('T')[0];
       const start = new Date(now);
-      start.setDate(start.getDate() - effectiveDays);
-      startDate = start.toISOString().split('T')[0];
+      
+      if (effectiveDays === 0) {
+        // Today: start and end are both today
+        startDate = endDate;
+      } else if (effectiveDays === 1) {
+        // Yesterday: start and end are both yesterday
+        start.setDate(start.getDate() - 1);
+        startDate = start.toISOString().split('T')[0];
+        endDate = startDate;
+      } else {
+        // Last N days: calculate range
+        start.setDate(start.getDate() - effectiveDays + 1);
+        startDate = start.toISOString().split('T')[0];
+      }
     }
 
     // Try to fetch from database first
