@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { fetchTranscriptSummaries } from '@/lib/voiceflowTranscripts';
 import { ingestTranscriptBatch } from '@/lib/transcriptIngestion';
 import { getApiKey, getProjectId } from '@/lib/env';
+import { query } from '@/lib/db';
 
 /**
  * Sync transcripts from Voiceflow to local database
@@ -9,6 +10,27 @@ import { getApiKey, getProjectId } from '@/lib/env';
  * POST - Requires CRON_SECRET header for security (for automated cron)
  * GET - Only available in development for manual testing
  */
+
+/**
+ * Get the timestamp of the most recently synced transcript
+ * Returns null if no transcripts exist (for initial sync)
+ */
+async function getLastSyncTime(): Promise<string | null> {
+  try {
+    const result = await query<{ updated_at: string }>(
+      `SELECT MAX(updated_at) as updated_at FROM public.vf_transcripts`
+    );
+    
+    if (result.rows.length === 0 || !result.rows[0].updated_at) {
+      return null;
+    }
+    
+    return result.rows[0].updated_at;
+  } catch (error) {
+    console.warn('[Sync] Could not determine last sync time, fetching all transcripts:', error);
+    return null;
+  }
+}
 
 async function performSync(): Promise<{ synced: number; failed: number; errors: string[] }> {
   const projectId = getProjectId();
@@ -27,23 +49,57 @@ async function performSync(): Promise<{ synced: number; failed: number; errors: 
   let totalFailed = 0;
 
   try {
-    console.log('[Sync] Fetching transcripts from Voiceflow...');
+    // Get last sync time for incremental sync
+    const lastSyncTime = await getLastSyncTime();
+    const syncMode = lastSyncTime ? 'incremental' : 'full';
     
-    // Fetch all transcripts (with pagination if needed)
-    const transcriptResponse = await fetchTranscriptSummaries(projectId, apiKey, {
-      limit: 100,
-    });
+    if (lastSyncTime) {
+      console.log(`[Sync] Incremental sync: fetching transcripts updated since ${lastSyncTime}`);
+    } else {
+      console.log('[Sync] Full sync: fetching all transcripts (first time or no previous sync)');
+    }
+    
+    // Fetch transcripts with pagination
+    // For incremental sync, filter by startTime to only get new/updated transcripts
+    const allTranscriptSummaries = [];
+    let cursor: string | undefined = undefined;
+    let hasMore = true;
+    const pageSize = 100;
 
-    if (!transcriptResponse.items || transcriptResponse.items.length === 0) {
+    while (hasMore) {
+      const transcriptResponse = await fetchTranscriptSummaries(projectId, apiKey, {
+        limit: pageSize,
+        cursor,
+        // Only fetch transcripts created/updated since last sync
+        // This filters client-side, but significantly reduces processing
+        startTime: lastSyncTime || undefined,
+      });
+
+      if (transcriptResponse.items && transcriptResponse.items.length > 0) {
+        allTranscriptSummaries.push(...transcriptResponse.items);
+        console.log(`[Sync] Fetched page: ${transcriptResponse.items.length} transcripts (total so far: ${allTranscriptSummaries.length})`);
+      }
+
+      cursor = transcriptResponse.nextCursor;
+      hasMore = !!cursor;
+
+      // Safety limit: prevent infinite loops
+      if (allTranscriptSummaries.length > 10000) {
+        console.warn('[Sync] Reached safety limit of 10,000 transcripts. Stopping pagination.');
+        break;
+      }
+    }
+
+    if (allTranscriptSummaries.length === 0) {
       console.log('[Sync] No transcripts found');
       return { synced: 0, failed: 0, errors: [] };
     }
 
-    console.log(`[Sync] Fetched ${transcriptResponse.items.length} transcript summaries`);
+    console.log(`[Sync] Total transcripts to sync: ${allTranscriptSummaries.length}`);
 
     // For each summary, fetch the full transcript with logs
     const fullTranscripts = [];
-    for (const summary of transcriptResponse.items) {
+    for (const summary of allTranscriptSummaries) {
       try {
         const url = `https://analytics-api.voiceflow.com/v1/transcript/${summary.id}`;
         const response = await fetch(url, {
