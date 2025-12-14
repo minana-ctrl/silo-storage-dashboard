@@ -5,7 +5,6 @@ import MetricCard from '@/components/MetricCard';
 import TimeFilter from '@/components/TimeFilter';
 import ConversationsChart from '@/components/ConversationsChart';
 import MessagesChart from '@/components/MessagesChart';
-import CTAVisibility from '@/components/CTAVisibility';
 import LocationBreakdownComponent from '@/components/LocationBreakdown';
 import SubjectAnalysis from '@/components/SubjectAnalysis';
 import SatisfactionScore from '@/components/SatisfactionScore';
@@ -201,11 +200,10 @@ export default function AnalyticsPage() {
             <MessagesChart data={data.timeSeries} />
           </div>
 
-          {/* Satisfaction, Rent/Sales, and CTA Metrics Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          {/* Satisfaction and Rent/Sales Metrics Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
             <SatisfactionScore data={data.satisfactionScore} />
             <RentSalesRatio data={getRentSalesData()} />
-            <CTAVisibility totalViews={data.totalCTAViews} />
           </div>
 
           {/* Location Breakdown */}
