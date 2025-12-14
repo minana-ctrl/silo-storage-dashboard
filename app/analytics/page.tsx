@@ -176,7 +176,7 @@ export default function AnalyticsPage() {
           )}
 
           {/* Key Metric Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
             <MetricCard
               label="Total Conversations"
               value={data.metrics.totalConversations}
@@ -192,10 +192,6 @@ export default function AnalyticsPage() {
             <MetricCard
               label="Average Interactions"
               value={data.metrics.averageInteractions}
-            />
-            <MetricCard
-              label="Unique Users"
-              value={data.metrics.uniqueUsers}
             />
           </div>
 
