@@ -169,8 +169,10 @@ export async function POST(request: NextRequest) {
     } else {
       effectiveDays = days !== undefined ? days : 7;
       
-      // Use Sydney timezone (Australia/Sydney - AEDT/AEST)
-      const sydneyNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Australia/Sydney' }));
+      // Use Sydney timezone (UTC+11 AEDT)
+      // Get current UTC time and add 11 hours for Sydney
+      const now = new Date();
+      const sydneyNow = new Date(now.getTime() + (11 * 60 * 60 * 1000));
       endDate = sydneyNow.toISOString().split('T')[0];
       
       if (effectiveDays === 0) {
@@ -178,15 +180,13 @@ export async function POST(request: NextRequest) {
         startDate = endDate;
       } else if (effectiveDays === 1) {
         // Yesterday in Sydney time
-        const sydneyYesterday = new Date(sydneyNow);
-        sydneyYesterday.setDate(sydneyYesterday.getDate() - 1);
-        startDate = sydneyYesterday.toISOString().split('T')[0];
+        sydneyNow.setDate(sydneyNow.getDate() - 1);
+        startDate = sydneyNow.toISOString().split('T')[0];
         endDate = startDate;
       } else {
         // Last N days in Sydney time
-        const sydneyStart = new Date(sydneyNow);
-        sydneyStart.setDate(sydneyStart.getDate() - (effectiveDays - 1));
-        startDate = sydneyStart.toISOString().split('T')[0];
+        sydneyNow.setDate(sydneyNow.getDate() - (effectiveDays - 1));
+        startDate = sydneyNow.toISOString().split('T')[0];
       }
     }
 
@@ -262,7 +262,7 @@ export async function POST(request: NextRequest) {
         currentDate.setDate(currentDate.getDate() + 1);
       }
 
-      // Query daily stats from database (using Sydney timezone)
+      // Query daily stats from database (using Sydney timezone UTC+11)
       const dailyResult = await query<{
         date: string;
         conversations: string;
@@ -276,10 +276,10 @@ export async function POST(request: NextRequest) {
         FROM (
           SELECT 
             session_id,
-            (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date as date
+            (started_at AT TIME ZONE 'UTC' AT TIME ZONE '+11:00')::date as date
           FROM public.vf_sessions
-          WHERE (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= $1::date 
-            AND (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= $2::date
+          WHERE (started_at AT TIME ZONE 'UTC' AT TIME ZONE '+11:00')::date >= $1::date 
+            AND (started_at AT TIME ZONE 'UTC' AT TIME ZONE '+11:00')::date <= $2::date
         ) s
         LEFT JOIN (
           SELECT 

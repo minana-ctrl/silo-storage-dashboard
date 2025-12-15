@@ -25,12 +25,12 @@ export async function fetchTranscriptSummariesFromDB(
   }
 
   if (filters.startTime) {
-    whereClause += ` AND (t.started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney') >= ($${params.length + 1}::timestamptz AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')`;
+    whereClause += ` AND (t.started_at AT TIME ZONE 'UTC' AT TIME ZONE '+11:00') >= ($${params.length + 1}::timestamptz AT TIME ZONE 'UTC' AT TIME ZONE '+11:00')`;
     params.push(filters.startTime);
   }
 
   if (filters.endTime) {
-    whereClause += ` AND (t.started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney') <= ($${params.length + 1}::timestamptz AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')`;
+    whereClause += ` AND (t.started_at AT TIME ZONE 'UTC' AT TIME ZONE '+11:00') <= ($${params.length + 1}::timestamptz AT TIME ZONE 'UTC' AT TIME ZONE '+11:00')`;
     params.push(filters.endTime);
   }
 
