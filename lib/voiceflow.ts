@@ -152,9 +152,10 @@ export async function fetchAnalytics(
     usersTimeSeries.sort((a, b) => a.period.localeCompare(b.period));
   }
 
-  // Sessions = number of unique days with user activity
-  // This represents conversation sessions (days with active users)
-  const totalSessions = usersTimeSeries.length;
+  // Sessions = total unique users across all periods
+  // Each unique user interaction represents a conversation session
+  // The Analytics API's unique_users metric is already de-duplicated per period
+  const totalSessions = totalUsers;
 
   console.log('Totals - Interactions:', totalInteractions, 'Sessions:', totalSessions, 'Users:', totalUsers);
   console.log('Interactions time series:', interactionsTimeSeries);

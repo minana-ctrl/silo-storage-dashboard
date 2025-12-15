@@ -10,7 +10,6 @@ import SubjectAnalysis from '@/components/SubjectAnalysis';
 import SatisfactionScore from '@/components/SatisfactionScore';
 import ClickThroughChart from '@/components/ClickThroughChart';
 import RentSalesRatio from '@/components/RentSalesRatio';
-import FunnelBreakdown from '@/components/FunnelBreakdown';
 import type { LocationBreakdown } from '@/types/analytics';
 
 interface AnalyticsData {
@@ -217,7 +216,6 @@ export default function AnalyticsPage() {
           {/* Category Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <ClickThroughChart data={data.clickThrough} />
-            <FunnelBreakdown data={data.funnel} />
           </div>
         </>
       )}

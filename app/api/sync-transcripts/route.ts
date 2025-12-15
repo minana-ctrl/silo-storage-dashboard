@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchTranscriptSummaries } from '@/lib/voiceflowTranscripts';
-import { ingestTranscriptBatch } from '@/lib/transcriptIngestion';
+import { ingestTranscriptBatchParallel } from '@/lib/transcriptIngestion';
 import { getApiKey, getProjectId } from '@/lib/env';
 import { query } from '@/lib/db';
+import { TranscriptSummary } from '@/types/conversations';
 
 /**
  * Sync transcripts from Voiceflow to local database
@@ -32,6 +33,62 @@ async function getLastSyncTime(): Promise<string | null> {
   }
 }
 
+/**
+ * Fetch full transcript from Voiceflow API
+ */
+async function fetchFullTranscript(transcriptId: string, apiKey: string): Promise<any> {
+  const url = `https://analytics-api.voiceflow.com/v1/transcript/${transcriptId}`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      authorization: apiKey,
+      Accept: 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to fetch transcript ${transcriptId}: ${response.status} - ${errorText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Batch fetch transcripts from Voiceflow with controlled parallelism
+ */
+async function batchFetchTranscripts(
+  transcriptIds: string[],
+  apiKey: string,
+  concurrency: number = 10
+): Promise<{ successful: any[]; failed: Array<{ id: string; error: string }> }> {
+  const successful = [];
+  const failed = [];
+  const queue = [...transcriptIds];
+
+  while (queue.length > 0) {
+    const batch = queue.splice(0, concurrency);
+    const promises = batch.map(id =>
+      fetchFullTranscript(id, apiKey)
+        .then(data => ({ success: true, id, data }))
+        .catch(error => ({ success: false, id, error: error.message }))
+    );
+
+    const results = await Promise.all(promises);
+
+    for (const result of results) {
+      if (result.success) {
+        successful.push((result as { success: true; id: string; data: any }).data);
+      } else {
+        failed.push({ id: result.id, error: (result as { success: false; id: string; error: string }).error });
+        console.warn(`[Sync] Failed to fetch transcript ${result.id}: ${(result as { success: false; id: string; error: string }).error}`);
+      }
+    }
+  }
+
+  return { successful, failed };
+}
+
 async function performSync(): Promise<{ synced: number; failed: number; errors: string[] }> {
   const projectId = getProjectId();
   const apiKey = getApiKey();
@@ -49,6 +106,17 @@ async function performSync(): Promise<{ synced: number; failed: number; errors: 
   let totalFailed = 0;
 
   try {
+    // Get database counts before sync for comparison
+    const beforeCounts = await query<{ sessions: string; transcripts: string }>(
+      `SELECT 
+        (SELECT COUNT(*) FROM public.vf_sessions) as sessions,
+        (SELECT COUNT(*) FROM public.vf_transcripts) as transcripts`
+    );
+    const beforeSessionsCount = parseInt(beforeCounts.rows[0]?.sessions || '0', 10);
+    const beforeTranscriptsCount = parseInt(beforeCounts.rows[0]?.transcripts || '0', 10);
+    
+    console.log(`[Sync] Database state before sync: ${beforeSessionsCount} sessions, ${beforeTranscriptsCount} transcripts`);
+
     // Get last sync time for incremental sync
     const lastSyncTime = await getLastSyncTime();
     const syncMode = lastSyncTime ? 'incremental' : 'full';
@@ -59,9 +127,8 @@ async function performSync(): Promise<{ synced: number; failed: number; errors: 
       console.log('[Sync] Full sync: fetching all transcripts (first time or no previous sync)');
     }
     
-    // Fetch transcripts with pagination
-    // For incremental sync, filter by startTime to only get new/updated transcripts
-    const allTranscriptSummaries = [];
+    // Fetch transcript summaries with pagination
+    const allTranscriptSummaries: TranscriptSummary[] = [];
     let cursor: string | undefined = undefined;
     let hasMore = true;
     const pageSize = 100;
@@ -71,7 +138,6 @@ async function performSync(): Promise<{ synced: number; failed: number; errors: 
         limit: pageSize,
         cursor,
         // Only fetch transcripts created/updated since last sync
-        // This filters client-side, but significantly reduces processing
         startTime: lastSyncTime || undefined,
       });
 
@@ -91,63 +157,48 @@ async function performSync(): Promise<{ synced: number; failed: number; errors: 
     }
 
     if (allTranscriptSummaries.length === 0) {
-      console.log('[Sync] No transcripts found');
+      console.log('[Sync] No transcripts found from Voiceflow API');
+      console.warn('[Sync] WARNING: Zero transcripts returned - this may indicate an API issue or incorrect filters');
       return { synced: 0, failed: 0, errors: [] };
     }
 
-    console.log(`[Sync] Total transcripts to sync: ${allTranscriptSummaries.length}`);
+    console.log(`[Sync] Total transcripts fetched from Voiceflow: ${allTranscriptSummaries.length}`);
+    console.log(`[Sync] Date range of transcripts: ${allTranscriptSummaries[0]?.createdAt} to ${allTranscriptSummaries[allTranscriptSummaries.length - 1]?.createdAt}`);
 
-    // For each summary, fetch the full transcript with logs
-    const fullTranscripts = [];
-    for (const summary of allTranscriptSummaries) {
-      try {
-        const url = `https://analytics-api.voiceflow.com/v1/transcript/${summary.id}`;
-        const response = await fetch(url, {
-          method: 'GET',
-          headers: {
-            authorization: apiKey,
-            Accept: 'application/json',
-          },
-        });
+    // Batch fetch full transcripts with parallelism (10 concurrent requests)
+    console.log('[Sync] Fetching full transcript details in parallel batches...');
+    const transcriptIds = allTranscriptSummaries.map(s => s.id);
+    const { successful: fullTranscripts, failed: failedFetches } = await batchFetchTranscripts(transcriptIds, apiKey, 10);
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.warn(`[Sync] Failed to fetch transcript ${summary.id}: ${response.status}`);
-          syncErrors.push(`Failed to fetch transcript ${summary.id}: ${response.status} - ${errorText}`);
-          totalFailed++;
-          continue;
-        }
-
-        const transcriptData = await response.json();
-        
-        // Map the API response to our transcript format
-        const fullTranscript = {
-          id: summary.id,
-          _id: summary.id,
-          sessionID: summary.sessionId,
-          session_id: summary.sessionId,
-          userId: summary.userId,
-          createdAt: summary.createdAt,
-          endedAt: summary.lastInteractionAt,
-          updatedAt: summary.lastInteractionAt,
-          properties: summary.properties,
-          logs: transcriptData.transcript?.logs || [],
-        };
-
-        fullTranscripts.push(fullTranscript);
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        console.error(`[Sync] Error fetching transcript ${summary.id}:`, errorMessage);
-        syncErrors.push(`Error fetching transcript ${summary.id}: ${errorMessage}`);
-        totalFailed++;
-      }
+    if (failedFetches.length > 0) {
+      totalFailed += failedFetches.length;
+      failedFetches.forEach(f => syncErrors.push(`Failed to fetch transcript ${f.id}: ${f.error}`));
     }
 
-    console.log(`[Sync] Fetched ${fullTranscripts.length} full transcripts, ingesting...`);
+    console.log(`[Sync] Successfully fetched ${fullTranscripts.length} full transcripts`);
 
-    // Ingest all transcripts
-    if (fullTranscripts.length > 0) {
-      const results = await ingestTranscriptBatch(fullTranscripts);
+    // Map API responses to transcript format
+    const mappedTranscripts = fullTranscripts.map(transcriptData => {
+      const summary = allTranscriptSummaries.find(s => s.id === transcriptData.id);
+      return {
+        id: summary?.id,
+        _id: summary?.id,
+        sessionID: summary?.sessionId,
+        session_id: summary?.sessionId,
+        userId: summary?.userId,
+        createdAt: summary?.createdAt,
+        endedAt: summary?.lastInteractionAt,
+        updatedAt: summary?.lastInteractionAt,
+        properties: summary?.properties,
+        logs: transcriptData.transcript?.logs || [],
+      };
+    });
+
+    console.log(`[Sync] Ingesting ${mappedTranscripts.length} transcripts with parallelism...`);
+
+    // Ingest all transcripts in parallel batches (5 concurrent ingestions)
+    if (mappedTranscripts.length > 0) {
+      const results = await ingestTranscriptBatchParallel(mappedTranscripts, 5);
 
       for (const result of results) {
         if (result.success) {
@@ -165,7 +216,24 @@ async function performSync(): Promise<{ synced: number; failed: number; errors: 
       }
     }
 
+    // Get database counts after sync for comparison
+    const afterCounts = await query<{ sessions: string; transcripts: string }>(
+      `SELECT 
+        (SELECT COUNT(*) FROM public.vf_sessions) as sessions,
+        (SELECT COUNT(*) FROM public.vf_transcripts) as transcripts`
+    );
+    const afterSessionsCount = parseInt(afterCounts.rows[0]?.sessions || '0', 10);
+    const afterTranscriptsCount = parseInt(afterCounts.rows[0]?.transcripts || '0', 10);
+    
+    const sessionsAdded = afterSessionsCount - beforeSessionsCount;
+    const transcriptsAdded = afterTranscriptsCount - beforeTranscriptsCount;
+    
     console.log(`[Sync] Complete: ${totalSynced} synced, ${totalFailed} failed`);
+    console.log(`[Sync] Database state after sync: ${afterSessionsCount} sessions (+${sessionsAdded}), ${afterTranscriptsCount} transcripts (+${transcriptsAdded})`);
+    
+    if (totalSynced > 0 && sessionsAdded === 0) {
+      console.warn('[Sync] WARNING: Transcripts were synced but no new sessions were added - possible data issue');
+    }
 
     return {
       synced: totalSynced,

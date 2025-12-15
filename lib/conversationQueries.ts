@@ -11,8 +11,8 @@ export async function fetchTranscriptSummariesFromDB(
   const limit = Math.min(filters.limit || 20, 100);
   const offset = filters.cursor ? Number(filters.cursor) || 0 : 0;
 
-  // Build where clause based on filters
-  let whereClause = 't.created_at IS NOT NULL';
+  // Build where clause based on filters (using started_at for consistency with Analytics)
+  let whereClause = 't.started_at IS NOT NULL';
   const params: (string | number)[] = [];
 
   if (filters.query) {
@@ -25,12 +25,12 @@ export async function fetchTranscriptSummariesFromDB(
   }
 
   if (filters.startTime) {
-    whereClause += ` AND t.created_at >= $${params.length + 1}`;
+    whereClause += ` AND (t.started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney') >= ($${params.length + 1}::timestamptz AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')`;
     params.push(filters.startTime);
   }
 
   if (filters.endTime) {
-    whereClause += ` AND t.created_at <= $${params.length + 1}`;
+    whereClause += ` AND (t.started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney') <= ($${params.length + 1}::timestamptz AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')`;
     params.push(filters.endTime);
   }
 
@@ -58,17 +58,21 @@ export async function fetchTranscriptSummariesFromDB(
       t.id,
       t.transcript_id,
       t.session_id,
-      t.user_id AS user_id,
+      t.user_id,
       t.started_at as "createdAt",
       COALESCE(t.ended_at, t.updated_at, t.created_at) as "lastInteractionAt",
       t.raw->'properties' as properties,
-      COUNT(vt.id)::text as "messageCount",
+      COALESCE(msg_counts.count, 0)::text as "messageCount",
       EXTRACT(EPOCH FROM (t.ended_at - t.started_at))::int as "durationSeconds"
     FROM public.vf_transcripts t
-    LEFT JOIN public.vf_turns vt ON vt.transcript_row_id = t.id
+    LEFT JOIN LATERAL (
+      SELECT COUNT(*) as count
+      FROM public.vf_turns vt
+      WHERE vt.transcript_row_id = t.id
+      LIMIT 1
+    ) msg_counts ON true
     WHERE ${whereClause}
-    GROUP BY t.id, t.transcript_id, t.session_id, t.user_id, t.started_at, t.ended_at, t.updated_at, t.created_at
-    ORDER BY t.created_at DESC
+    ORDER BY t.started_at DESC
     LIMIT $${params.length + 1} OFFSET $${params.length + 2}
     `,
     [...baseParams, limit + 1, offset]
@@ -157,7 +161,7 @@ export async function fetchTranscriptDialogFromDB(transcriptId: string): Promise
 }
 
 /**
- * Fetch a single transcript summary by ID
+ * Fetch a single transcript summary by ID with optimized query
  */
 export async function fetchTranscriptByIdFromDB(transcriptId: string): Promise<TranscriptSummary | null> {
   const result = await query<{
@@ -176,16 +180,20 @@ export async function fetchTranscriptByIdFromDB(transcriptId: string): Promise<T
       t.id,
       t.transcript_id,
       t.session_id,
-      t.user_id AS user_id,
+      t.user_id,
       t.started_at as "createdAt",
       COALESCE(t.ended_at, t.updated_at, t.created_at) as "lastInteractionAt",
       t.raw->'properties' as properties,
-      COUNT(vt.id)::text as "messageCount",
+      COALESCE(msg_counts.count, 0)::text as "messageCount",
       EXTRACT(EPOCH FROM (t.ended_at - t.started_at))::int as "durationSeconds"
     FROM public.vf_transcripts t
-    LEFT JOIN public.vf_turns vt ON vt.transcript_row_id = t.id
+    LEFT JOIN LATERAL (
+      SELECT COUNT(*) as count
+      FROM public.vf_turns vt
+      WHERE vt.transcript_row_id = t.id
+      LIMIT 1
+    ) msg_counts ON true
     WHERE t.transcript_id = $1 OR t.id::text = $1
-    GROUP BY t.id, t.transcript_id, t.session_id, t.user_id, t.started_at, t.ended_at, t.updated_at, t.created_at
     `,
     [transcriptId]
   );

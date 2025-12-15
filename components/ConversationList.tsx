@@ -106,15 +106,6 @@ export default function ConversationList({
             />
           </svg>
         </button>
-        <button
-          type="button"
-          className="inline-flex items-center justify-center rounded border border-border bg-white p-2 text-text-muted hover:text-secondary-black transition"
-          aria-label="Export conversations"
-        >
-          <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M10 14V3m0 0l-3 3m3-3l3 3M4 17h12" />
-          </svg>
-        </button>
       </div>
 
 

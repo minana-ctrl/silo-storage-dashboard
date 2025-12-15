@@ -112,7 +112,7 @@ export const metadata: Metadata = {
   title: "Silo Storage Dashboard",
   description: "AI Agent Analytics and Conversation Monitoring",
   icons: {
-    icon: "/favicon.svg",
+    icon: "/favicon.jpg",
   },
 };
 

@@ -64,7 +64,7 @@ async function upsertTranscriptRow(rawTranscript: any): Promise<string> {
 }
 
 /**
- * Parse and insert turns into vf_turns
+ * Parse and insert turns into vf_turns with bulk operations
  */
 async function insertTurns(
   transcriptRowId: string,
@@ -73,45 +73,64 @@ async function insertTurns(
 ): Promise<number> {
   if (!logs || logs.length === 0) return 0;
 
-  let insertCount = 0;
-
+  // Convert logs to turn objects
+  const turns = [];
   for (let idx = 0; idx < logs.length; idx++) {
     const log = logs[idx];
     const turn = mapLogToTurn(log, idx);
-
-    if (!turn) continue;
-
-    try {
-      await query(
-        `
-        INSERT INTO public.vf_turns (
-          transcript_row_id, session_id, turn_index, role, text, payload, timestamp, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-        ON CONFLICT (transcript_row_id, turn_index) DO UPDATE SET
-          role = $4,
-          text = $5,
-          payload = $6,
-          timestamp = $7
-        `,
-        [
-          transcriptRowId,
-          sessionId,
-          idx,
-          turn.role,
-          turn.content || null,
-          JSON.stringify(turn.raw || {}),
-          turn.timestamp,
-        ]
-      );
-
-      insertCount++;
-    } catch (error) {
-      console.error('[insertTurns] Error at turn index', idx, ':', error instanceof Error ? error.message : error);
-      throw error;
+    if (turn) {
+      turns.push({
+        transcriptRowId,
+        sessionId,
+        idx,
+        role: turn.role,
+        content: turn.content || null,
+        payload: JSON.stringify(turn.raw || {}),
+        timestamp: turn.timestamp,
+      });
     }
   }
 
-  return insertCount;
+  if (turns.length === 0) return 0;
+
+  try {
+    // Build bulk insert query
+    const placeholders = turns
+      .map((_, i) => {
+        const offset = i * 7;
+        return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7})`;
+      })
+      .join(',');
+
+    const values = turns.flatMap(turn => [
+      turn.transcriptRowId,
+      turn.sessionId,
+      turn.idx,
+      turn.role,
+      turn.content,
+      turn.payload,
+      turn.timestamp,
+    ]);
+
+    await query(
+      `
+      INSERT INTO public.vf_turns (
+        transcript_row_id, session_id, turn_index, role, text, payload, timestamp, created_at
+      ) VALUES ${placeholders}
+      ON CONFLICT (transcript_row_id, turn_index) DO UPDATE SET
+        role = EXCLUDED.role,
+        text = EXCLUDED.text,
+        payload = EXCLUDED.payload,
+        timestamp = EXCLUDED.timestamp
+      `,
+      values
+    );
+
+    return turns.length;
+  } catch (error) {
+    console.error('[insertTurns] Bulk insert error:', error instanceof Error ? error.message : error);
+    throw error;
+  }
 }
 
 /**
@@ -162,41 +181,50 @@ async function upsertSession(sessionData: any): Promise<string> {
 }
 
 /**
- * Insert events into vf_events
+ * Insert events into vf_events with bulk operations
  */
 async function insertEvents(events: any[]): Promise<number> {
   if (!events || events.length === 0) return 0;
 
-  let insertCount = 0;
+  try {
+    // Build bulk insert query
+    const placeholders = events
+      .map((_, i) => {
+        const offset = i * 12;
+        return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12})`;
+      })
+      .join(',');
 
-  for (const event of events) {
+    const values = events.flatMap(event => [
+      event.session_id,
+      event.user_id || null,
+      event.event_type,
+      event.event_ts,
+      event.typeuser || null,
+      event.location_type || null,
+      event.location_value || null,
+      event.rating || null,
+      event.feedback || null,
+      event.cta_id || null,
+      event.cta_name || null,
+      JSON.stringify(event.meta || {}),
+    ]);
+
     await query(
       `
       INSERT INTO public.vf_events (
         session_id, user_id, event_type, event_ts, typeuser, location_type, location_value,
         rating, feedback, cta_id, cta_name, meta
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      ) VALUES ${placeholders}
       `,
-      [
-        event.session_id,
-        event.user_id || null,
-        event.event_type,
-        event.event_ts,
-        event.typeuser || null,
-        event.location_type || null,
-        event.location_value || null,
-        event.rating || null,
-        event.feedback || null,
-        event.cta_id || null,
-        event.cta_name || null,
-        JSON.stringify(event.meta || {}),
-      ]
+      values
     );
 
-    insertCount++;
+    return events.length;
+  } catch (error) {
+    console.error('[insertEvents] Bulk insert error:', error instanceof Error ? error.message : error);
+    throw error;
   }
-
-  return insertCount;
 }
 
 /**
@@ -263,7 +291,7 @@ export async function ingestTranscript(rawTranscript: any): Promise<IngestionRes
 }
 
 /**
- * Batch ingest multiple transcripts
+ * Batch ingest multiple transcripts with parallel processing
  */
 export async function ingestTranscriptBatch(transcripts: any[]): Promise<IngestionResult[]> {
   const results: IngestionResult[] = [];
@@ -277,6 +305,47 @@ export async function ingestTranscriptBatch(transcripts: any[]): Promise<Ingesti
         `Ingestion warning for transcript ${result.transcriptId}:`,
         result.errors
       );
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Batch ingest multiple transcripts with controlled parallelization
+ * Processes N transcripts concurrently to avoid overwhelming the database
+ */
+export async function ingestTranscriptBatchParallel(
+  transcripts: any[],
+  concurrency: number = 5
+): Promise<IngestionResult[]> {
+  const results: IngestionResult[] = [];
+  const queue = [...transcripts];
+
+  // Process in batches with controlled concurrency
+  while (queue.length > 0) {
+    const batch = queue.splice(0, concurrency);
+    const batchResults = await Promise.all(
+      batch.map(transcript =>
+        ingestTranscript(transcript).catch(error => ({
+          transcriptId: transcript.id || transcript._id || 'unknown',
+          sessionId: transcript.sessionID || transcript.session_id || 'unknown',
+          turnsCount: 0,
+          eventsCount: 0,
+          success: false,
+          errors: [error instanceof Error ? error.message : String(error)],
+        }))
+      )
+    );
+
+    for (const result of batchResults) {
+      results.push(result);
+      if (!result.success) {
+        console.warn(
+          `Ingestion warning for transcript ${result.transcriptId}:`,
+          result.errors
+        );
+      }
     }
   }
 

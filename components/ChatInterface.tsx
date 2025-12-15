@@ -72,9 +72,9 @@ export default function ChatInterface({
             </div>
           )}
         </div>
-        {isDemo && (
+        {isDemo && messages.length > 0 && (
           <p className="mt-2 text-xs font-body text-primary-red">
-            Demo transcript. Connect Voiceflow to view real chats.
+            Demo transcript. Add `PROJECT_ID`/`API_KEY` (or VOICEFLOW_* equivalents) to connect Voiceflow.
           </p>
         )}
       </div>

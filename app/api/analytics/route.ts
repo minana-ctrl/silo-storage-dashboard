@@ -10,6 +10,8 @@ import {
 } from '@/lib/analyticsQueries';
 import { query } from '@/lib/db';
 import { getApiKey, getProjectId } from '@/lib/env';
+import { fetchAnalytics, fetchIntents } from '@/lib/voiceflow';
+import { getCachedAnalytics, cacheAnalytics, clearAnalyticsCache } from '@/lib/queryCache';
 import type { LocationBreakdown } from '@/types/analytics';
 
 // Generate mock data for development/demo purposes when DB is empty
@@ -113,6 +115,44 @@ function generateMockData(days: number, startDate: string, endDate: string) {
 
 export async function POST(request: NextRequest) {
   try {
+    // Check for API keys first
+    const projectId = getProjectId();
+    const apiKey = getApiKey();
+    
+    if (!projectId || !apiKey) {
+      console.warn('[Analytics] Missing Voiceflow credentials - PROJECT_ID or API_KEY not set');
+      const { days, startDate: customStartDate, endDate: customEndDate } = await request.json();
+      let startDate: string;
+      let endDate: string;
+      let effectiveDays: number;
+
+      if (customStartDate && customEndDate) {
+        startDate = customStartDate;
+        endDate = customEndDate;
+        const start = new Date(customStartDate);
+        const end = new Date(customEndDate);
+        effectiveDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      } else {
+        effectiveDays = days !== undefined ? days : 7;
+        const now = new Date();
+        endDate = now.toISOString().split('T')[0];
+        const start = new Date(now);
+        
+        if (effectiveDays === 0) {
+          startDate = endDate;
+        } else if (effectiveDays === 1) {
+          start.setDate(start.getDate() - 1);
+          startDate = start.toISOString().split('T')[0];
+          endDate = startDate;
+        } else {
+          start.setDate(start.getDate() - effectiveDays + 1);
+          startDate = start.toISOString().split('T')[0];
+        }
+      }
+      
+      return NextResponse.json(generateMockData(effectiveDays, startDate, endDate));
+    }
+
     const { days, startDate: customStartDate, endDate: customEndDate } = await request.json();
 
     // Use custom dates if provided, otherwise calculate from days
@@ -128,28 +168,38 @@ export async function POST(request: NextRequest) {
       effectiveDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
     } else {
       effectiveDays = days !== undefined ? days : 7;
-      const now = new Date();
-      endDate = now.toISOString().split('T')[0];
-      const start = new Date(now);
+      
+      // Use Sydney timezone (Australia/Sydney - AEDT/AEST)
+      const sydneyNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Australia/Sydney' }));
+      endDate = sydneyNow.toISOString().split('T')[0];
       
       if (effectiveDays === 0) {
-        // Today: start and end are both today
+        // Today in Sydney time
         startDate = endDate;
       } else if (effectiveDays === 1) {
-        // Yesterday: start and end are both yesterday
-        start.setDate(start.getDate() - 1);
-        startDate = start.toISOString().split('T')[0];
+        // Yesterday in Sydney time
+        const sydneyYesterday = new Date(sydneyNow);
+        sydneyYesterday.setDate(sydneyYesterday.getDate() - 1);
+        startDate = sydneyYesterday.toISOString().split('T')[0];
         endDate = startDate;
       } else {
-        // Last N days: calculate range
-        start.setDate(start.getDate() - effectiveDays + 1);
-        startDate = start.toISOString().split('T')[0];
+        // Last N days in Sydney time
+        const sydneyStart = new Date(sydneyNow);
+        sydneyStart.setDate(sydneyStart.getDate() - (effectiveDays - 1));
+        startDate = sydneyStart.toISOString().split('T')[0];
       }
     }
 
     // Try to fetch from database first
     try {
       console.log(`[Analytics] Fetching data from database for ${startDate} to ${endDate}`);
+
+      // Check cache first
+      const cachedResult = getCachedAnalytics(startDate, endDate);
+      if (cachedResult) {
+        console.log(`[Analytics] Cache hit for ${startDate} to ${endDate}`);
+        return NextResponse.json(cachedResult, { status: 200 });
+      }
 
       // Fetch current period data from database
       const [
@@ -212,7 +262,7 @@ export async function POST(request: NextRequest) {
         currentDate.setDate(currentDate.getDate() + 1);
       }
 
-      // Query daily stats from database
+      // Query daily stats from database (using Sydney timezone)
       const dailyResult = await query<{
         date: string;
         conversations: string;
@@ -226,9 +276,10 @@ export async function POST(request: NextRequest) {
         FROM (
           SELECT 
             session_id,
-            started_at::date as date
+            (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date as date
           FROM public.vf_sessions
-          WHERE started_at >= $1::date AND started_at < ($2::date + INTERVAL '1 day')
+          WHERE (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= $1::date 
+            AND (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= $2::date
         ) s
         LEFT JOIN (
           SELECT 
@@ -306,42 +357,108 @@ export async function POST(request: NextRequest) {
         `[Analytics] Successfully fetched from DB: ${conversationStats.totalConversations} conversations, ${conversationStats.totalMessages} messages`
       );
 
-      return NextResponse.json(
-        {
-          metrics: {
-            totalConversations: conversationStats.totalConversations,
-            incomingMessages: conversationStats.totalMessages,
-            averageInteractions:
-              conversationStats.totalConversations > 0
-                ? Math.round((conversationStats.totalMessages / conversationStats.totalConversations) * 10) / 10
-                : 0,
-            uniqueUsers: conversationStats.totalUsers,
-            conversationsChange: Math.round(conversationsChange * 10) / 10,
-            messagesChange: Math.round(messagesChange * 10) / 10,
-          },
-          timeSeries,
-          satisfactionScore: {
-            average: satisfactionScore.average,
-            trend: satisfactionScore.trend,
-            totalRatings: satisfactionScore.totalRatings,
-            distribution: satisfactionScore.distribution,
-          },
-          clickThrough,
-          funnel: funnelBreakdown,
-          locationBreakdown: locationBreakdownFormatted,
-          totalCTAViews,
-          topIntents,
-          period: {
-            start: startDate,
-            end: endDate,
-          },
-          isDemo: false,
+      const responseData = {
+        metrics: {
+          totalConversations: conversationStats.totalConversations,
+          incomingMessages: conversationStats.totalMessages,
+          averageInteractions:
+            conversationStats.totalConversations > 0
+              ? Math.round((conversationStats.totalMessages / conversationStats.totalConversations) * 10) / 10
+              : 0,
+          uniqueUsers: conversationStats.totalUsers,
+          conversationsChange: Math.round(conversationsChange * 10) / 10,
+          messagesChange: Math.round(messagesChange * 10) / 10,
         },
-        { status: 200 }
-      );
+        timeSeries,
+        satisfactionScore: {
+          average: satisfactionScore.average,
+          trend: satisfactionScore.trend,
+          totalRatings: satisfactionScore.totalRatings,
+          distribution: satisfactionScore.distribution,
+        },
+        clickThrough,
+        funnel: funnelBreakdown,
+        locationBreakdown: locationBreakdownFormatted,
+        totalCTAViews,
+        topIntents,
+        period: {
+          start: startDate,
+          end: endDate,
+        },
+        isDemo: false,
+      };
+
+      // Cache the result for future requests
+      cacheAnalytics(startDate, endDate, responseData);
+
+      return NextResponse.json(responseData, { status: 200 });
     } catch (dbError) {
-      console.warn('[Analytics] Database query failed, falling back to mock data:', dbError);
-      // Fall back to mock data if DB fails
+      console.warn('[Analytics] Database query failed:', dbError);
+      
+      // If API keys are present, try Voiceflow API as fallback
+      if (projectId && apiKey) {
+        try {
+          console.log('[Analytics] Attempting to fetch from Voiceflow API as fallback...');
+          const voiceflowData = await fetchAnalytics(projectId, apiKey, startDate, endDate);
+          const topIntents = await fetchIntents(projectId, apiKey, startDate, endDate);
+          
+          // Transform Voiceflow API response to match expected format
+          const timeSeries = voiceflowData.interactionsTimeSeries.map(item => ({
+            date: item.period,
+            conversations: voiceflowData.usersTimeSeries.find(u => u.period === item.period)?.count || 0,
+            messages: item.count,
+          }));
+          
+          return NextResponse.json({
+            metrics: {
+              totalConversations: voiceflowData.usage.sessions,
+              incomingMessages: voiceflowData.usage.messages,
+              averageInteractions: voiceflowData.usage.sessions > 0 
+                ? Math.round((voiceflowData.usage.messages / voiceflowData.usage.sessions) * 10) / 10 
+                : 0,
+              uniqueUsers: voiceflowData.usage.users,
+              conversationsChange: 0,
+              messagesChange: 0,
+            },
+            timeSeries,
+            satisfactionScore: {
+              average: 0,
+              trend: [],
+              totalRatings: 0,
+              distribution: {},
+            },
+            clickThrough: {
+              rent: 0,
+              sales: 0,
+              ownerOccupier: 0,
+              investor: 0,
+            },
+            funnel: {
+              rent: { clicks: 0, locationSelection: 0 },
+              ownerOccupier: { clicks: 0, locationSelection: 0 },
+              investor: { clicks: 0, locationSelection: 0 },
+            },
+            locationBreakdown: {
+              rent: { huskisson: 0, wollongong: 0, nowra: 0 },
+              investor: { wollongong: 0, nowra: 0, oranPark: 0 },
+              ownerOccupier: { wollongong: 0, nowra: 0, oranPark: 0 },
+            },
+            totalCTAViews: 0,
+            topIntents: topIntents.slice(0, 5),
+            period: {
+              start: startDate,
+              end: endDate,
+            },
+            isDemo: false, // Using real Voiceflow data, not demo
+          }, { status: 200 });
+        } catch (voiceflowError) {
+          console.error('[Analytics] Voiceflow API fallback also failed:', voiceflowError);
+          // Both DB and Voiceflow failed, show demo data
+          return NextResponse.json(generateMockData(effectiveDays, startDate, endDate));
+        }
+      }
+      
+      // No API keys or both DB and Voiceflow failed, fall back to mock data
       return NextResponse.json(generateMockData(effectiveDays, startDate, endDate));
     }
   } catch (error) {

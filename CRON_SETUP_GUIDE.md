@@ -184,3 +184,4 @@ LIMIT 10;
 ---
 
 **Note:** The sync job is now optimized with incremental syncing, so it will only fetch new/updated transcripts since the last sync, making it very efficient even with thousands of transcripts.
+

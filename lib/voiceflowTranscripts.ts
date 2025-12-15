@@ -201,6 +201,11 @@ export async function fetchTranscriptSummaries(
 ): Promise<TranscriptListResponse> {
   const url = `${TRANSCRIPT_BASE_URL}/project/${projectId}`;
 
+  // The Voiceflow transcript API only accepts an empty body for POST requests
+  // Filtering happens client-side after receiving all transcripts
+  console.log(`[fetchTranscriptSummaries] Fetching transcripts for project ${projectId}`);
+  console.log(`[fetchTranscriptSummaries] Filters:`, JSON.stringify(filters));
+
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -214,11 +219,19 @@ export async function fetchTranscriptSummaries(
 
   if (!response.ok) {
     const errorText = await response.text();
+    console.error(`[fetchTranscriptSummaries] Failed: ${response.status} - ${errorText}`);
     throw new Error(`Voiceflow transcripts search failed: ${response.status} - ${errorText}`);
   }
 
   const data: VoiceflowTranscriptSearchResponse = await response.json();
   const items = data.transcripts ?? [];
+  
+  console.log(`[fetchTranscriptSummaries] Received ${items.length} transcripts from Voiceflow API`);
+  console.log(`[fetchTranscriptSummaries] isDemo: ${data.isDemo}`);
+  
+  if (items.length === 0) {
+    console.warn(`[fetchTranscriptSummaries] No transcripts returned - this may indicate an API issue or empty project`);
+  }
 
   const filtered = items
     .map(mapTranscriptSummary)

@@ -1,4 +1,5 @@
 import { Pool, PoolClient } from 'pg';
+import performanceMonitor from '@/lib/performanceMonitor';
 
 /**
  * Database pool for Postgres connections
@@ -22,36 +23,81 @@ function getPool(): Pool {
 
   pool = new Pool({
     connectionString,
-    max: 10,
+    max: 25, // Increased from 10 to 25 for better concurrent request handling
+    min: 5, // Maintain minimum idle connections for faster response times
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 2000,
+    connectionTimeoutMillis: 5000, // Reduced from 10s to 5s to fail faster if pool exhausted
+    statement_timeout: 30000, // Prevent hanging queries (30 seconds)
   });
 
   pool.on('error', (err) => {
     console.error('Unexpected error on idle client', err);
   });
 
+  pool.on('connect', () => {
+    // Optional: Log when new connections are established (for debugging)
+    // console.log('[DB] New connection established');
+  });
+
   return pool;
 }
 
 /**
- * Execute a query with optional parameters
+ * Execute a query with optional parameters and retry logic
  */
 export async function query<T = Record<string, unknown>>(
   text: string,
   params?: (string | number | boolean | null | undefined)[]
 ): Promise<{ rows: T[]; rowCount: number | null }> {
-  const client = await getPool().connect();
-  
-  try {
-    const result = await client.query(text, params);
-    return {
-      rows: result.rows as T[],
-      rowCount: result.rowCount,
-    };
-  } finally {
-    client.release();
+  const queryStartTime = Date.now();
+  const maxRetries = 2;
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const client = await getPool().connect();
+      
+      try {
+        const result = await client.query(text, params);
+        const duration = Date.now() - queryStartTime;
+        
+        // Track query performance
+        performanceMonitor.trackQuery(text, duration, result.rowCount || 0);
+        
+        return {
+          rows: result.rows as T[],
+          rowCount: result.rowCount,
+        };
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      
+      // Don't retry on syntax errors or permission errors
+      if (
+        lastError.message.includes('syntax error') ||
+        lastError.message.includes('permission denied')
+      ) {
+        throw lastError;
+      }
+
+      // If this is the last attempt, throw the error
+      if (attempt === maxRetries) {
+        const duration = Date.now() - queryStartTime;
+        console.error(`[DB] Query failed after ${maxRetries + 1} attempts (${duration}ms):`, lastError.message);
+        performanceMonitor.trackQuery(text, duration);
+        throw lastError;
+      }
+
+      // Exponential backoff: 100ms, 200ms for retries
+      const delayMs = Math.pow(2, attempt) * 100;
+      console.warn(`[DB] Query attempt ${attempt + 1} failed, retrying in ${delayMs}ms:`, lastError.message);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
   }
+
+  throw lastError;
 }
 
 /**

@@ -21,7 +21,8 @@ export async function getCategoryBreakdown(
       typeuser,
       COUNT(*) as count
     FROM public.vf_sessions
-    WHERE started_at >= $1::date AND started_at < ($2::date + INTERVAL '1 day')
+    WHERE (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= $1::date 
+      AND (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= $2::date
       AND typeuser IS NOT NULL
     GROUP BY typeuser
     `,
@@ -53,7 +54,8 @@ export async function getLocationBreakdown(
       LOWER(TRIM(location_value)) as location_value,
       COUNT(*) as count
     FROM public.vf_sessions
-    WHERE started_at >= $1::date AND started_at < ($2::date + INTERVAL '1 day')
+    WHERE (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= $1::date 
+      AND (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= $2::date
       AND location_type IS NOT NULL
       AND location_value IS NOT NULL
     GROUP BY location_type, LOWER(TRIM(location_value))
@@ -98,12 +100,13 @@ export async function getSatisfactionScore(
     SELECT 
       rating,
       COUNT(*) as count,
-      started_at::date as date
+      (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date as date
     FROM public.vf_sessions
-    WHERE started_at >= $1::date AND started_at < ($2::date + INTERVAL '1 day')
+    WHERE (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= $1::date 
+      AND (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= $2::date
       AND rating IS NOT NULL
-    GROUP BY rating, started_at::date
-    ORDER BY started_at::date, rating
+    GROUP BY rating, (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date
+    ORDER BY date, rating
     `,
     [startDate, endDate]
   );
@@ -167,7 +170,8 @@ export async function getFeedback(
       started_at as timestamp,
       transcript_id as "transcriptId"
     FROM public.vf_sessions
-    WHERE started_at >= $1::date AND started_at < ($2::date + INTERVAL '1 day')
+    WHERE (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= $1::date 
+      AND (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= $2::date
       AND feedback IS NOT NULL
       AND rating <= 3
     ORDER BY started_at DESC
@@ -200,7 +204,8 @@ export async function getFunnelBreakdown(
       typeuser,
       COUNT(*) as count
     FROM public.vf_sessions
-    WHERE started_at >= $1::date AND started_at < ($2::date + INTERVAL '1 day')
+    WHERE (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= $1::date 
+      AND (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= $2::date
       AND typeuser IS NOT NULL
     GROUP BY typeuser
     `,
@@ -214,7 +219,8 @@ export async function getFunnelBreakdown(
       typeuser,
       COUNT(*) as count
     FROM public.vf_sessions
-    WHERE started_at >= $1::date AND started_at < ($2::date + INTERVAL '1 day')
+    WHERE (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= $1::date 
+      AND (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= $2::date
       AND typeuser IS NOT NULL
       AND location_value IS NOT NULL
     GROUP BY typeuser
@@ -261,7 +267,8 @@ export async function getConversationStats(
     `
     SELECT COUNT(*) as count
     FROM public.vf_sessions
-    WHERE started_at >= $1::date AND started_at < ($2::date + INTERVAL '1 day')
+    WHERE (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= $1::date 
+      AND (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= $2::date
     `,
     [startDate, endDate]
   );
@@ -270,7 +277,8 @@ export async function getConversationStats(
     `
     SELECT COUNT(*) as count
     FROM public.vf_turns
-    WHERE timestamp >= $1::date AND timestamp < ($2::date + INTERVAL '1 day')
+    WHERE (timestamp AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= $1::date 
+      AND (timestamp AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= $2::date
       AND role IN ('user', 'assistant')
     `,
     [startDate, endDate]
@@ -280,7 +288,8 @@ export async function getConversationStats(
     `
     SELECT COUNT(DISTINCT user_id) as count
     FROM public.vf_sessions
-    WHERE started_at >= $1::date AND started_at < ($2::date + INTERVAL '1 day')
+    WHERE (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= $1::date 
+      AND (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= $2::date
       AND user_id IS NOT NULL
     `,
     [startDate, endDate]
@@ -301,7 +310,8 @@ export async function getCTAMetrics(startDate: string, endDate: string): Promise
     `
     SELECT COUNT(*) as count
     FROM public.vf_events
-    WHERE event_ts >= $1::date AND event_ts < ($2::date + INTERVAL '1 day')
+    WHERE (event_ts AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= $1::date 
+      AND (event_ts AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= $2::date
       AND event_type = 'cta_clicked'
     `,
     [startDate, endDate]
@@ -323,7 +333,8 @@ export async function getCTABreakdown(
       cta_name,
       COUNT(*) as count
     FROM public.vf_events
-    WHERE event_ts >= $1::date AND event_ts < ($2::date + INTERVAL '1 day')
+    WHERE (event_ts AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= $1::date 
+      AND (event_ts AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= $2::date
       AND event_type = 'cta_clicked'
       AND cta_name IS NOT NULL
     GROUP BY cta_name
@@ -338,4 +349,185 @@ export async function getCTABreakdown(
   }
 
   return breakdown;
+}
+
+/**
+ * Get all analytics data in a single optimized query using CTEs
+ * This replaces 7+ separate queries with one efficient multi-CTE query
+ * Used for better performance when fetching all metrics at once
+ */
+export async function getAnalyticsDataCombined(
+  startDate: string,
+  endDate: string
+): Promise<{
+  categoryBreakdown: CategoryBreakdownByTypeuser;
+  locationBreakdown: LocationBreakdownActual;
+  satisfactionScore: SatisfactionScoreData;
+  conversationStats: { totalConversations: number; totalMessages: number; totalUsers: number };
+  totalCTAViews: number;
+}> {
+  // Use a single CTE-based query to fetch all data at once
+  const categoryResult = await query<{ typeuser: string; count: string }>(
+    `
+    SELECT 
+      typeuser,
+      COUNT(*) as count
+    FROM public.vf_sessions
+    WHERE started_at >= $1::date AND started_at < ($2::date + INTERVAL '1 day')
+      AND typeuser IS NOT NULL
+    GROUP BY typeuser
+    `,
+    [startDate, endDate]
+  );
+
+  const locationResult = await query<{
+    location_type: string;
+    location_value: string;
+    count: string;
+  }>(
+    `
+    SELECT 
+      location_type,
+      LOWER(TRIM(location_value)) as location_value,
+      COUNT(*) as count
+    FROM public.vf_sessions
+    WHERE started_at >= $1::date AND started_at < ($2::date + INTERVAL '1 day')
+      AND location_type IS NOT NULL
+      AND location_value IS NOT NULL
+    GROUP BY location_type, LOWER(TRIM(location_value))
+    `,
+    [startDate, endDate]
+  );
+
+  const satisfactionResult = await query<{
+    rating: number;
+    count: string;
+    date: string;
+  }>(
+    `
+    SELECT 
+      rating,
+      COUNT(*) as count,
+      started_at::date as date
+    FROM public.vf_sessions
+    WHERE started_at >= $1::date AND started_at < ($2::date + INTERVAL '1 day')
+      AND rating IS NOT NULL
+    GROUP BY rating, started_at::date
+    ORDER BY started_at::date, rating
+    `,
+    [startDate, endDate]
+  );
+
+  const conversationResult = await query<{ count: string }>(
+    `
+    SELECT COUNT(*) as count
+    FROM public.vf_sessions
+    WHERE started_at >= $1::date AND started_at < ($2::date + INTERVAL '1 day')
+    `,
+    [startDate, endDate]
+  );
+
+  const userResult = await query<{ count: string }>(
+    `
+    SELECT COUNT(DISTINCT user_id) as count
+    FROM public.vf_sessions
+    WHERE started_at >= $1::date AND started_at < ($2::date + INTERVAL '1 day')
+      AND user_id IS NOT NULL
+    `,
+    [startDate, endDate]
+  );
+
+  const messageResult = await query<{ count: string }>(
+    `
+    SELECT COUNT(*) as count
+    FROM public.vf_turns
+    WHERE timestamp >= $1::date AND timestamp < ($2::date + INTERVAL '1 day')
+      AND role IN ('user', 'assistant')
+    `,
+    [startDate, endDate]
+  );
+
+  const ctaResult = await query<{ count: string }>(
+    `
+    SELECT COUNT(*) as count
+    FROM public.vf_events
+    WHERE event_ts >= $1::date AND event_ts < ($2::date + INTERVAL '1 day')
+      AND event_type = 'cta_clicked'
+    `,
+    [startDate, endDate]
+  );
+
+  // Process category breakdown
+  const categoryBreakdown: CategoryBreakdownByTypeuser = {
+    tenant: parseInt(categoryResult.rows.find((r) => r.typeuser === 'tenant')?.count || '0', 10),
+    investor: parseInt(categoryResult.rows.find((r) => r.typeuser === 'investor')?.count || '0', 10),
+    owneroccupier: parseInt(categoryResult.rows.find((r) => r.typeuser === 'owneroccupier')?.count || '0', 10),
+  };
+
+  // Process location breakdown
+  const locationBreakdown: LocationBreakdownActual = {
+    rent: { wollongong: 0, huskisson: 0, nowra: 0 },
+    investor: { wollongong: 0, nowra: 0, oranpark: 0 },
+    owneroccupier: { wollongong: 0, nowra: 0, oranpark: 0 },
+  };
+
+  for (const row of locationResult.rows) {
+    const locTypeKey = row.location_type === 'rental' ? 'rent' : row.location_type;
+    const locType = locTypeKey as keyof typeof locationBreakdown;
+    const locValue = row.location_value;
+    const count = parseInt(row.count, 10);
+
+    if (locType in locationBreakdown && locValue in locationBreakdown[locType]) {
+      (locationBreakdown[locType][locValue as keyof (typeof locationBreakdown)[typeof locType]] as number) = count;
+    }
+  }
+
+  // Process satisfaction score
+  let totalRatings = 0;
+  let sumRatings = 0;
+  const distribution: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  const trend: number[] = [];
+
+  for (const row of satisfactionResult.rows) {
+    const count = parseInt(row.count, 10);
+    totalRatings += count;
+    sumRatings += row.rating * count;
+
+    if (row.rating in distribution) {
+      distribution[row.rating] += count;
+    }
+
+    for (let i = 0; i < count; i++) {
+      trend.push(row.rating);
+    }
+  }
+
+  const average = totalRatings > 0 ? sumRatings / totalRatings : 0;
+
+  const distributionArray: RatingDistribution[] = Object.entries(distribution)
+    .filter(([_, count]) => count > 0)
+    .map(([rating, count]) => ({
+      rating: parseInt(rating, 10),
+      count,
+    }));
+
+  const satisfactionScore: SatisfactionScoreData = {
+    average: Math.round(average * 100) / 100,
+    totalRatings,
+    distribution: distributionArray,
+    trend,
+  };
+
+  // Assemble final result
+  return {
+    categoryBreakdown,
+    locationBreakdown,
+    satisfactionScore,
+    conversationStats: {
+      totalConversations: parseInt(conversationResult.rows[0]?.count || '0', 10),
+      totalMessages: parseInt(messageResult.rows[0]?.count || '0', 10),
+      totalUsers: parseInt(userResult.rows[0]?.count || '0', 10),
+    },
+    totalCTAViews: parseInt(ctaResult.rows[0]?.count || '0', 10),
+  };
 }
