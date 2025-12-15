@@ -96,6 +96,10 @@ export default function LoginPage() {
               placeholder="admin@silostorage.com"
               disabled={loading}
               className="w-full px-4 py-2 border border-border rounded focus:ring-2 focus:ring-primary-red focus:border-transparent outline-none transition disabled:bg-gray-50 disabled:text-text-muted font-body"
+              style={{
+                borderColor: 'rgba(229, 229, 229, 0.69)',
+                backgroundColor: 'rgba(255, 255, 255, 1)'
+              }}
               required
             />
           </div>
@@ -113,6 +117,9 @@ export default function LoginPage() {
               placeholder="••••••••"
               disabled={loading}
               className="w-full px-4 py-2 border border-border rounded focus:ring-2 focus:ring-primary-red focus:border-transparent outline-none transition disabled:bg-gray-50 disabled:text-text-muted font-body"
+              style={{
+                backgroundColor: 'rgba(255, 255, 255, 1)'
+              }}
               required
             />
           </div>
