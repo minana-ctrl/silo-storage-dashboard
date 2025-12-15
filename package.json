@@ -5,10 +5,10 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "node scripts/start.js",
+    "start:next": "next start",
     "lint": "next lint",
-    "migrate": "node scripts/migrate.js",
-    "postinstall": "npm run migrate"
+    "migrate": "node scripts/migrate.js"
   },
   "dependencies": {
     "next": "^14.2.0",

@@ -19,8 +19,16 @@ async function runMigrations() {
   try {
     console.log('🔄 Starting database migrations...');
     
+    if (!process.env.DATABASE_URL) {
+      console.log('⚠️  DATABASE_URL not set, skipping migrations');
+      console.log('   (This is normal for local builds without a database)');
+      process.exit(0);
+    }
+    
     const migrationsDir = path.join(__dirname, '..', 'db', 'migrations');
-    const files = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort();
+    const files = fs.readdirSync(migrationsDir)
+      .filter(f => f.endsWith('.sql') && !f.startsWith('.')) // Ignore hidden files (macOS resource forks)
+      .sort();
     
     console.log(`📁 Found ${files.length} migration files`);
 
