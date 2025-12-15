@@ -53,21 +53,34 @@ function normalizeLocation(loc: string): string | null {
 }
 
 /**
- * Extract numeric rating from "X/5" format
+ * Extract numeric rating from various formats
+ * Handles: "1/5", "1", "1 out of 5", "1 stars", etc.
  */
 export function extractRatingScore(rating: string | number | undefined): number | null {
-  if (!rating) return null;
-  
+  if (rating === null || rating === undefined) return null;
+
   const ratingStr = String(rating).trim();
-  const match = ratingStr.match(/(\d+)(?:\/5)?/);
-  
+
+  if (!ratingStr) return null;
+
+  // Try direct number extraction first
+  const match = ratingStr.match(/(\d+)/);
+
   if (match && match[1]) {
     const score = parseInt(match[1], 10);
     if (score >= 1 && score <= 5) {
       return score;
     }
+    // If number is outside 1-5, check if it's a percentage (e.g., "80" could mean 4/5)
+    if (score >= 1 && score <= 100) {
+      // Convert percentage to 1-5 scale
+      const scaledScore = Math.round((score / 100) * 5);
+      if (scaledScore >= 1 && scaledScore <= 5) {
+        return scaledScore;
+      }
+    }
   }
-  
+
   return null;
 }
 
@@ -96,11 +109,11 @@ export function parseVoiceflowVariables(
       }
     }
     
-    // Match rating
-    if (normalizedKey === 'rating') {
-      if (strValue.match(/^\d+\/5$/)) {
-        result.rating = strValue;
-      }
+    // Match rating - accept various formats
+    if (normalizedKey === 'rating' || normalizedKey === 'satisfaction' || normalizedKey === 'score') {
+      // Accept any format that contains a number 1-5
+      // Formats: "1/5", "1", "1 out of 5", "80%", etc.
+      result.rating = strValue;
     }
     
     // Match feedback

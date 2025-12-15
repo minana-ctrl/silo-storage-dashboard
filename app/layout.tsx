@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
-import Sidebar from "@/components/Sidebar";
+import ConditionalSidebar from "@/components/ConditionalSidebar";
+import MainContent from "@/components/MainContent";
 
 // Load Metropolis font family (Body font)
 const metropolis = localFont({
@@ -124,15 +125,10 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${metropolis.variable} ${robostic.variable}`}>
       <body className="h-screen overflow-hidden">
-        <div className="flex h-full">
-          <Sidebar />
-          <main className="flex-1 ml-[250px] bg-background-white h-full overflow-y-auto">
-            {children}
-          </main>
-        </div>
+        <ConditionalSidebar />
+        <MainContent>{children}</MainContent>
       </body>
     </html>
   );
 }
-
 

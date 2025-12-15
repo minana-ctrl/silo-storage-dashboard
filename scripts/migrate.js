@@ -6,6 +6,9 @@
  * Safe to run multiple times (uses IF NOT EXISTS)
  */
 
+// Load environment variables from .env.local
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env.local') });
+
 const fs = require('fs');
 const path = require('path');
 const { Pool } = require('pg');

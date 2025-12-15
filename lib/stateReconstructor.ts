@@ -38,15 +38,18 @@ function deriveLocationValue(vars: any): string | null {
 /**
  * Find a variable in transcript traces
  * Searches through logs for "set" traces or debug traces with variable changes
+ * Handles multiple variable name variations (e.g., "rating" vs "satisfaction_score")
  */
-function findVariableInTraces(logs: any[], variableName: string): string | null {
+function findVariableInTraces(logs: any[], variableName: string, alternateNames: string[] = []): string | null {
   if (!logs || logs.length === 0) return null;
+
+  const varNames = [variableName, ...alternateNames];
 
   for (const log of logs) {
     // Look for set traces (old format)
     if (log.type === 'trace' && log.data?.type === 'set') {
       const payload = log.data.payload;
-      if (payload && payload.key === variableName && payload.value) {
+      if (payload && varNames.includes(payload.key) && payload.value) {
         return String(payload.value);
       }
     }
@@ -54,18 +57,29 @@ function findVariableInTraces(logs: any[], variableName: string): string | null 
     // Look for debug traces with set-v3 nodes and variable diffs (Voiceflow SDK format)
     if (log.type === 'trace' && log.data?.type === 'debug') {
       const payload = log.data.payload;
-      if (payload?.ref?.nodeType === 'set-v3' && payload?.metadata?.diff?.[variableName]) {
-        const varChange = payload.metadata.diff[variableName];
-        if (varChange.after !== undefined) {
-          return String(varChange.after);
+      if (payload?.ref?.nodeType === 'set-v3' && payload?.metadata?.diff) {
+        for (const varName of varNames) {
+          if (payload.metadata.diff[varName]) {
+            const varChange = payload.metadata.diff[varName];
+            if (varChange.after !== undefined) {
+              return String(varChange.after);
+            }
+          }
         }
       }
     }
 
-    // Look for action traces with variable payloads (user selections)
-    if (log.type === 'action' && log.data?.type && typeof log.data.type === 'string' && log.data.type.startsWith('path-')) {
-      // This is a path selection - skip, we get this from debug traces
-      continue;
+    // Look for user/assistant messages that might contain rating info
+    if (variableName === 'rating' && (log.type === 'user' || log.type === 'assistant')) {
+      const message = log.data?.message || log.message || '';
+      // Look for patterns like "5/5", "5 stars", "rating: 5"
+      const ratingMatch = String(message).match(/(\d)\s*(?:\/5|stars?|out of 5)?/i);
+      if (ratingMatch) {
+        const score = parseInt(ratingMatch[1], 10);
+        if (score >= 1 && score <= 5) {
+          return String(score);
+        }
+      }
     }
   }
 
@@ -185,7 +199,8 @@ export function reconstructState(
   // 4. Extract rating from properties or traces
   let rating = vars.rating ? extractRatingScore(vars.rating) : null;
   if (!rating) {
-    const tracedRating = findVariableInTraces(logs, 'rating');
+    // Try alternate names: satisfaction, score, etc.
+    const tracedRating = findVariableInTraces(logs, 'rating', ['satisfaction', 'score', 'satisfaction_score']);
     if (tracedRating) {
       rating = extractRatingScore(tracedRating);
     }

@@ -14,7 +14,7 @@ class LRUCache<T> {
   private maxSize: number;
   private ttl: number; // Time to live in milliseconds
 
-  constructor(maxSize: number = 100, ttl: number = 2 * 60 * 1000) {
+  constructor(maxSize: number = 100, ttl: number = 5 * 60 * 1000) {
     this.maxSize = maxSize;
     this.ttl = ttl;
   }
@@ -100,8 +100,9 @@ class LRUCache<T> {
   }
 }
 
-// Create global cache instance
-const analyticsCache = new LRUCache<any>(100, 2 * 60 * 1000); // 2 minute TTL
+// Global cache instance - 5 minute TTL for analytics data
+// Analytics data changes less frequently than transactional data, so longer TTL is beneficial
+const analyticsCache = new LRUCache<any>(100, 5 * 60 * 1000); // 5 minute TTL
 
 /**
  * Get cached analytics data or null if not found/expired
