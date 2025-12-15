@@ -39,7 +39,7 @@ export async function fetchTranscriptSummariesFromDB(
     params.push(filters.platform);
   }
 
-  // Main query
+  // Main query - optimized to pre-aggregate message counts instead of LATERAL JOIN
   const baseParams = [...params];
 
   const result = await query<{
@@ -65,12 +65,11 @@ export async function fetchTranscriptSummariesFromDB(
       COALESCE(msg_counts.count, 0)::text as "messageCount",
       EXTRACT(EPOCH FROM (t.ended_at - t.started_at))::int as "durationSeconds"
     FROM public.vf_transcripts t
-    LEFT JOIN LATERAL (
-      SELECT COUNT(*) as count
-      FROM public.vf_turns vt
-      WHERE vt.transcript_row_id = t.id
-      LIMIT 1
-    ) msg_counts ON true
+    LEFT JOIN (
+      SELECT transcript_row_id, COUNT(*) as count
+      FROM public.vf_turns
+      GROUP BY transcript_row_id
+    ) msg_counts ON msg_counts.transcript_row_id = t.id
     WHERE ${whereClause}
     ORDER BY t.started_at DESC
     LIMIT $${params.length + 1} OFFSET $${params.length + 2}
@@ -187,12 +186,11 @@ export async function fetchTranscriptByIdFromDB(transcriptId: string): Promise<T
       COALESCE(msg_counts.count, 0)::text as "messageCount",
       EXTRACT(EPOCH FROM (t.ended_at - t.started_at))::int as "durationSeconds"
     FROM public.vf_transcripts t
-    LEFT JOIN LATERAL (
-      SELECT COUNT(*) as count
-      FROM public.vf_turns vt
-      WHERE vt.transcript_row_id = t.id
-      LIMIT 1
-    ) msg_counts ON true
+    LEFT JOIN (
+      SELECT transcript_row_id, COUNT(*) as count
+      FROM public.vf_turns
+      GROUP BY transcript_row_id
+    ) msg_counts ON msg_counts.transcript_row_id = t.id
     WHERE t.transcript_id = $1 OR t.id::text = $1
     `,
     [transcriptId]
