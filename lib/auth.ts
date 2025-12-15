@@ -13,22 +13,34 @@ if (typeof window === 'undefined') {
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 
-// Validate JWT_SECRET exists and is strong enough
-const JWT_SECRET_STRING = process.env.JWT_SECRET;
+// Lazy getter for JWT_SECRET - only validates when actually needed at runtime
+let cachedJWTSecret: Uint8Array | null = null;
 
-if (!JWT_SECRET_STRING) {
-  throw new Error(
-    'JWT_SECRET environment variable is not set. Authentication cannot function without a secure secret key.'
-  );
+function getJWTSecret(): Uint8Array {
+  // Return cached value if already validated
+  if (cachedJWTSecret) {
+    return cachedJWTSecret;
+  }
+
+  // Validate JWT_SECRET exists and is strong enough
+  const JWT_SECRET_STRING = process.env.JWT_SECRET;
+
+  if (!JWT_SECRET_STRING) {
+    throw new Error(
+      'JWT_SECRET environment variable is not set. Authentication cannot function without a secure secret key.'
+    );
+  }
+
+  if (JWT_SECRET_STRING.length < 32) {
+    throw new Error(
+      'JWT_SECRET must be at least 32 characters long for security. Please use a strong, random secret.'
+    );
+  }
+
+  // Cache the encoded secret
+  cachedJWTSecret = new TextEncoder().encode(JWT_SECRET_STRING);
+  return cachedJWTSecret;
 }
-
-if (JWT_SECRET_STRING.length < 32) {
-  throw new Error(
-    'JWT_SECRET must be at least 32 characters long for security. Please use a strong, random secret.'
-  );
-}
-
-const JWT_SECRET = new TextEncoder().encode(JWT_SECRET_STRING);
 
 const TOKEN_EXPIRATION = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
 const COOKIE_NAME = 'auth-token';
@@ -84,7 +96,7 @@ export async function generateToken(user: User): Promise<string> {
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('7d')
-    .sign(JWT_SECRET);
+    .sign(getJWTSecret());
 
   return token;
 }
@@ -94,7 +106,7 @@ export async function generateToken(user: User): Promise<string> {
  */
 export async function verifyToken(token: string): Promise<JWTPayload | null> {
   try {
-    const verified = await jwtVerify(token, JWT_SECRET);
+    const verified = await jwtVerify(token, getJWTSecret());
     return verified.payload as unknown as JWTPayload;
   } catch (error) {
     return null;

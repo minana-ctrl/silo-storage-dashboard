@@ -1,22 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
 
-// Validate JWT_SECRET exists
-const JWT_SECRET_STRING = process.env.JWT_SECRET;
+// Lazy getter for JWT_SECRET - only validates when actually needed at runtime
+let cachedJWTSecret: Uint8Array | null = null;
 
-if (!JWT_SECRET_STRING) {
-  throw new Error(
-    'JWT_SECRET environment variable is not set. Authentication cannot function without a secure secret key.'
-  );
+function getJWTSecret(): Uint8Array {
+  // Return cached value if already validated
+  if (cachedJWTSecret) {
+    return cachedJWTSecret;
+  }
+
+  // Validate JWT_SECRET exists and is strong enough
+  const JWT_SECRET_STRING = process.env.JWT_SECRET;
+
+  if (!JWT_SECRET_STRING) {
+    throw new Error(
+      'JWT_SECRET environment variable is not set. Authentication cannot function without a secure secret key.'
+    );
+  }
+
+  if (JWT_SECRET_STRING.length < 32) {
+    throw new Error(
+      'JWT_SECRET must be at least 32 characters long for security. Please use a strong, random secret.'
+    );
+  }
+
+  // Cache the encoded secret
+  cachedJWTSecret = new TextEncoder().encode(JWT_SECRET_STRING);
+  return cachedJWTSecret;
 }
-
-if (JWT_SECRET_STRING.length < 32) {
-  throw new Error(
-    'JWT_SECRET must be at least 32 characters long for security. Please use a strong, random secret.'
-  );
-}
-
-const JWT_SECRET = new TextEncoder().encode(JWT_SECRET_STRING);
 
 // Routes that don't require authentication
 const publicRoutes = ['/login', '/api/auth/login'];
@@ -66,7 +78,7 @@ export async function middleware(request: NextRequest) {
       const token = request.cookies.get('auth-token')?.value;
       if (token) {
         try {
-          await jwtVerify(token, JWT_SECRET);
+          await jwtVerify(token, getJWTSecret());
           // Token is valid, redirect to home
           const response = NextResponse.redirect(new URL('/', request.url));
           return addSecurityHeaders(response);
@@ -89,7 +101,7 @@ export async function middleware(request: NextRequest) {
 
   try {
     // Verify token is valid
-    await jwtVerify(token, JWT_SECRET);
+    await jwtVerify(token, getJWTSecret());
     // Token is valid, allow access
     return addSecurityHeaders(NextResponse.next());
   } catch (error) {
