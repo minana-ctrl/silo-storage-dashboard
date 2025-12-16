@@ -4,6 +4,11 @@ import { getApiKey, getProjectId } from '@/lib/env';
 import { query } from '@/lib/db';
 import { TranscriptSummary } from '@/types/conversations';
 
+// Format date to ISO string for Voiceflow API
+function formatDate(date: Date): string {
+    return date.toISOString();
+}
+
 /**
  * Get the timestamp of the most recently synced transcript
  * Returns null if no transcripts exist (for initial sync)
@@ -81,7 +86,7 @@ async function batchFetchTranscripts(
     return { successful, failed };
 }
 
-export async function performSync(): Promise<{ synced: number; failed: number; errors: string[] }> {
+export async function performSync(options: { force?: boolean } = {}): Promise<{ synced: number; failed: number; errors: string[] }> {
     const projectId = getProjectId();
     const apiKey = getApiKey();
 
@@ -110,12 +115,19 @@ export async function performSync(): Promise<{ synced: number; failed: number; e
         console.log(`[Sync] Database state before sync: ${beforeSessionsCount} sessions, ${beforeTranscriptsCount} transcripts`);
 
         // Get last sync time for incremental sync
-        const lastSyncTime = await getLastSyncTime();
+        // If force is true, we ignore last sync time and fetch everything
+        let lastSyncTime: string | null = null;
+
+        if (!options.force) {
+            lastSyncTime = await getLastSyncTime();
+        } else {
+            console.log('[Sync] Force sync enabled: Ignoring last sync time and fetching ALL transcripts');
+        }
 
         if (lastSyncTime) {
             console.log(`[Sync] Incremental sync: fetching transcripts updated since ${lastSyncTime}`);
         } else {
-            console.log('[Sync] Full sync: fetching all transcripts (first time or no previous sync)');
+            console.log('[Sync] Full sync: fetching all transcripts (first time, no previous sync, or forced)');
         }
 
         // Fetch transcript summaries with pagination

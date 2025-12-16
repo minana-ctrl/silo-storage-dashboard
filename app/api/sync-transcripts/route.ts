@@ -55,7 +55,19 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('[Sync POST] Starting sync job...');
-    const result = await performSync();
+
+    // Parse body for force flag
+    let force = false;
+    try {
+      const body = await request.json();
+      if (body && body.force) {
+        force = true;
+      }
+    } catch (e) {
+      // Body might be empty or invalid JSON, ignore
+    }
+
+    const result = await performSync({ force });
 
     // Clear cache so fresh data is loaded
     if (result.synced > 0) {
