@@ -24,9 +24,9 @@ export interface IngestionResult {
 /**
  * Upsert a transcript row into vf_transcripts and return its ID
  */
-async function upsertTranscriptRow(rawTranscript: any): Promise<string> {
+async function upsertTranscriptRow(rawTranscript: any, sessionId: string): Promise<string> {
   const transcriptId = rawTranscript.id || rawTranscript._id;
-  const sessionId = rawTranscript.sessionID || rawTranscript.session_id;
+  // const sessionId = rawTranscript.sessionID || rawTranscript.session_id; // Using passed sessionId
   const userId = rawTranscript.userId || undefined;
   const startedAt = rawTranscript.createdAt || rawTranscript.started_at || null;
   const endedAt = rawTranscript.endedAt || rawTranscript.ended_at || rawTranscript.updatedAt || null;
@@ -232,15 +232,15 @@ async function insertEvents(events: any[]): Promise<number> {
  * Orchestrates the entire process of storing a transcript in the database
  */
 export async function ingestTranscript(rawTranscript: any): Promise<IngestionResult> {
-  const sessionId = rawTranscript.sessionID || rawTranscript.session_id || '';
   const transcriptId = rawTranscript.id || rawTranscript._id || '';
+  const sessionId = rawTranscript.sessionID || rawTranscript.session_id || transcriptId || '';
   const userId = rawTranscript.userId;
   const logs = rawTranscript.logs || [];
   const errors: string[] = [];
 
   try {
     // 1. Insert/update vf_transcripts with raw JSON
-    const transcriptRowId = await upsertTranscriptRow(rawTranscript);
+    const transcriptRowId = await upsertTranscriptRow(rawTranscript, sessionId);
 
     // 2. Parse turns and insert into vf_turns
     const turnsCount = await insertTurns(transcriptRowId, sessionId, logs);
