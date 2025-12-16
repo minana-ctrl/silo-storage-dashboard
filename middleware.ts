@@ -31,7 +31,7 @@ function getJWTSecret(): Uint8Array {
 }
 
 // Routes that don't require authentication
-const publicRoutes = ['/login', '/api/auth/login'];
+const publicRoutes = ['/login', '/api/auth/login', '/api/sync-transcripts'];
 
 /**
  * Add security headers to response
