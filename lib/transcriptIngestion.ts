@@ -115,7 +115,7 @@ async function insertTurns(
     await query(
       `
       INSERT INTO public.vf_turns (
-        transcript_row_id, session_id, turn_index, role, text, payload, timestamp, created_at
+        transcript_row_id, session_id, turn_index, role, text, payload, timestamp
       ) VALUES ${placeholders}
       ON CONFLICT (transcript_row_id, turn_index) DO UPDATE SET
         role = EXCLUDED.role,
