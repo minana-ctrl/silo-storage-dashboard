@@ -238,15 +238,22 @@ export async function fetchTranscriptSummaries(
     console.warn(`[fetchTranscriptSummaries] No transcripts returned - this may indicate an API issue or empty project`);
   }
 
-  const filtered = items
-    .map(mapTranscriptSummary)
+  const mapped = items.map(mapTranscriptSummary);
+  let filteredByEnv = 0;
+  let filteredByPlatform = 0;
+  let filteredByQuery = 0;
+  let filteredByTime = 0;
+  
+  const filtered = mapped
     .filter((summary) => {
       // Filter by environmentID if specified (to get only production/deployed transcripts)
       if (filters.environmentID && (summary.raw as any)?.environmentID !== filters.environmentID) {
+        filteredByEnv++;
         return false;
       }
       
       if (filters.platform && summary.platform?.toLowerCase() !== filters.platform.toLowerCase()) {
+        filteredByPlatform++;
         return false;
       }
 
@@ -267,6 +274,7 @@ export async function fetchTranscriptSummaries(
           .toLowerCase();
 
         if (!haystack.includes(needle)) {
+          filteredByQuery++;
           return false;
         }
       }
@@ -274,6 +282,7 @@ export async function fetchTranscriptSummaries(
       if (filters.startTime) {
         const start = new Date(filters.startTime).getTime();
         if (new Date(summary.createdAt).getTime() < start) {
+          filteredByTime++;
           return false;
         }
       }
@@ -281,6 +290,7 @@ export async function fetchTranscriptSummaries(
       if (filters.endTime) {
         const end = new Date(filters.endTime).getTime();
         if (new Date(summary.createdAt).getTime() > end) {
+          filteredByTime++;
           return false;
         }
       }
@@ -288,6 +298,21 @@ export async function fetchTranscriptSummaries(
       return true;
     })
     .sort((a, b) => b.lastInteractionAt.localeCompare(a.lastInteractionAt));
+  
+  // Log filtering results
+  if (mapped.length > 0 && filtered.length === 0) {
+    console.warn(`[fetchTranscriptSummaries] All ${mapped.length} transcripts were filtered out:`);
+    console.warn(`  - Filtered by environmentID: ${filteredByEnv}`);
+    console.warn(`  - Filtered by platform: ${filteredByPlatform}`);
+    console.warn(`  - Filtered by search query: ${filteredByQuery}`);
+    console.warn(`  - Filtered by time range: ${filteredByTime}`);
+    if (filteredByEnv > 0 && filters.environmentID) {
+      console.warn(`  - Expected environmentID: ${filters.environmentID}`);
+      console.warn(`  - Sample transcript environmentID: ${(mapped[0]?.raw as any)?.environmentID}`);
+    }
+  } else if (mapped.length > filtered.length) {
+    console.log(`[fetchTranscriptSummaries] Filtered ${mapped.length} → ${filtered.length} transcripts (removed ${mapped.length - filtered.length})`);
+  }
 
   // Return all filtered items (pagination already handled by API)
   return {

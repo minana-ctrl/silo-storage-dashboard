@@ -97,7 +97,7 @@ export default function ConversationInspector({ conversation }: ConversationInsp
           value={note}
           onChange={(event) => setNote(event.target.value)}
           placeholder="Capture follow-ups, bugs, or feedback..."
-          className="h-32 w-full rounded border border-border bg-gray-50 px-3 py-2 font-body text-sm text-text-dark focus:outline-none focus:ring-2 focus:ring-primary-red"
+          className="h-32 w-full rounded border border-border bg-white px-3 py-2 font-body text-sm text-text-dark focus:outline-none focus:ring-2 focus:ring-primary-red"
         />
         {conversation && (
           <p className="mt-2 text-xs font-body text-text-muted">

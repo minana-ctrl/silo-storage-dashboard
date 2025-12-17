@@ -208,7 +208,7 @@ export async function fetchIntents(
     // Check for the correct response structure
     // The API returns result.intents (not result.items)
     if (!result.result?.intents || result.result.intents.length === 0) {
-      console.warn('No intents returned from API');
+      console.log(`[Intents] No intents found for date range ${startDate} to ${endDate} (expected for dates with no activity)`);
       return [];
     }
 

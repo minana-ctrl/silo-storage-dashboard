@@ -52,7 +52,6 @@ export default function ConversationsPage() {
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [messagesError, setMessagesError] = useState<string | null>(null);
   const [dialogIsDemo, setDialogIsDemo] = useState(false);
-  const [refreshToken, setRefreshToken] = useState(0);
 
   const selectedConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === selectedId),
@@ -139,7 +138,7 @@ export default function ConversationsPage() {
   useEffect(() => {
     loadConversations(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.query, filters.days, filters.platform, filters.customStartDate, filters.customEndDate, refreshToken]);
+  }, [filters.query, filters.days, filters.platform, filters.customStartDate, filters.customEndDate]);
 
   useEffect(() => {
     if (selectedId) {
@@ -153,8 +152,6 @@ export default function ConversationsPage() {
     if (!nextCursor || listLoading) return;
     loadConversations(false, nextCursor);
   };
-
-  const handleRefresh = () => setRefreshToken((token) => token + 1);
 
   const handleCustomRangeChange = (startDate: string, endDate: string) => {
     setFilters((prev) => ({ 
@@ -208,7 +205,6 @@ export default function ConversationsPage() {
           onCustomRangeChange={handleCustomRangeChange}
           platform={filters.platform}
           onPlatformChange={(platform) => setFilters((prev) => ({ ...prev, platform }))}
-          onRefresh={handleRefresh}
           hasMore={Boolean(nextCursor)}
           onLoadMore={handleLoadMore}
           isDemo={listIsDemo}

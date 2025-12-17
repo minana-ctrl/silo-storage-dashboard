@@ -12,6 +12,14 @@ export default function SettingsPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [tempPassword, setTempPassword] = useState('');
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
 
   useEffect(() => {
     fetchData();
@@ -90,6 +98,45 @@ export default function SettingsPage() {
     }
   };
 
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    // Validate passwords match
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      setPasswordError('New passwords do not match');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          currentPassword: passwordData.currentPassword,
+          newPassword: passwordData.newPassword,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setPasswordError(data.error || 'Failed to change password');
+        if (data.errors) {
+          setPasswordError(data.errors.join(', '));
+        }
+        return;
+      }
+
+      setPasswordSuccess('Password changed successfully!');
+      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setShowPasswordForm(false);
+    } catch (err) {
+      setPasswordError('An error occurred while changing password');
+    }
+  };
+
   if (loading) {
     return (
       <div className="p-8">
@@ -104,6 +151,90 @@ export default function SettingsPage() {
     <div className="p-8">
       <h1 className="font-heading text-3xl text-secondary-black mb-8">Settings</h1>
 
+      {/* Password Change Section - Available to All Users */}
+      <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold text-gray-900">Change Password</h2>
+          <button
+            onClick={() => setShowPasswordForm(!showPasswordForm)}
+            className="bg-primary-red hover:bg-red-700 text-white px-4 py-2 rounded-lg transition"
+          >
+            {showPasswordForm ? 'Cancel' : 'Change Password'}
+          </button>
+        </div>
+
+        {/* Password Messages */}
+        {passwordError && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-red-700">{passwordError}</p>
+          </div>
+        )}
+        {passwordSuccess && (
+          <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+            <p className="text-green-700">{passwordSuccess}</p>
+          </div>
+        )}
+
+        {/* Password Change Form */}
+        {showPasswordForm && (
+          <form onSubmit={handleChangePassword} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <div className="space-y-4 mb-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Current Password
+                </label>
+                <input
+                  type="password"
+                  value={passwordData.currentPassword}
+                  onChange={(e) =>
+                    setPasswordData({ ...passwordData, currentPassword: e.target.value })
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  New Password
+                </label>
+                <input
+                  type="password"
+                  value={passwordData.newPassword}
+                  onChange={(e) =>
+                    setPasswordData({ ...passwordData, newPassword: e.target.value })
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                  required
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Must be at least 8 characters with uppercase, lowercase, and numbers
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Confirm New Password
+                </label>
+                <input
+                  type="password"
+                  value={passwordData.confirmPassword}
+                  onChange={(e) =>
+                    setPasswordData({ ...passwordData, confirmPassword: e.target.value })
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                  required
+                />
+              </div>
+            </div>
+            <button
+              type="submit"
+              className="bg-primary-red hover:bg-red-700 text-white px-6 py-2 rounded-lg transition"
+            >
+              Update Password
+            </button>
+          </form>
+        )}
+      </div>
+
       {/* Admin Only Section */}
       {isAdmin && (
         <div className="bg-white rounded-lg shadow-md p-6 mb-8">
@@ -111,7 +242,7 @@ export default function SettingsPage() {
             <h2 className="text-2xl font-bold text-gray-900">User Management</h2>
             <button
               onClick={() => setShowAddForm(!showAddForm)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition"
+              className="bg-primary-red hover:bg-red-700 text-white px-4 py-2 rounded-lg transition"
             >
               {showAddForm ? 'Cancel' : 'Add User'}
             </button>
@@ -138,7 +269,7 @@ export default function SettingsPage() {
                   placeholder="Email"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                   required
                 />
                 <input
@@ -146,13 +277,13 @@ export default function SettingsPage() {
                   placeholder="Full Name"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                   required
                 />
                 <select
                   value={formData.role}
                   onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                 >
                   <option value="user">User</option>
                   <option value="admin">Admin</option>
@@ -160,7 +291,7 @@ export default function SettingsPage() {
               </div>
               <button
                 type="submit"
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition"
+                className="bg-primary-red hover:bg-red-700 text-white px-4 py-2 rounded-lg transition"
               >
                 Create User
               </button>

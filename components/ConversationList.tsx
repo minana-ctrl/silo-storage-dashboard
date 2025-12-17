@@ -17,7 +17,6 @@ interface ConversationListProps {
   onCustomRangeChange?: (startDate: string, endDate: string) => void;
   platform?: string;
   onPlatformChange: (platform?: string) => void;
-  onRefresh: () => void;
   hasMore: boolean;
   onLoadMore: () => void;
   isDemo?: boolean;
@@ -51,7 +50,6 @@ export default function ConversationList({
   onCustomRangeChange,
   platform,
   onPlatformChange,
-  onRefresh,
   hasMore,
   onLoadMore,
   isDemo,
@@ -92,20 +90,6 @@ export default function ConversationList({
           onDaysChange={onDaysChange}
           onCustomRangeChange={onCustomRangeChange}
         />
-        <button
-          type="button"
-          onClick={onRefresh}
-          className="inline-flex items-center justify-center rounded border border-border bg-white p-2 text-text-muted hover:text-secondary-black transition"
-          aria-label="Refresh conversations"
-        >
-          <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M4 4v4h4M16 16v-4h-4M5 15a7 7 0 119.9-9.9L17 7M3 13l2 2"
-            />
-          </svg>
-        </button>
       </div>
 
 

@@ -70,7 +70,7 @@ export default function TimeFilter({ selectedDays, onDaysChange, onCustomRangeCh
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="w-full px-3 py-2 border border-border rounded font-body text-text-dark focus:outline-none focus:ring-2 focus:ring-primary-red"
+                className="w-full px-3 py-2 border border-border rounded font-body text-text-dark bg-white focus:outline-none focus:ring-2 focus:ring-primary-red"
               />
             </div>
             <div>
@@ -81,7 +81,7 @@ export default function TimeFilter({ selectedDays, onDaysChange, onCustomRangeCh
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="w-full px-3 py-2 border border-border rounded font-body text-text-dark focus:outline-none focus:ring-2 focus:ring-primary-red"
+                className="w-full px-3 py-2 border border-border rounded font-body text-text-dark bg-white focus:outline-none focus:ring-2 focus:ring-primary-red"
               />
             </div>
             <div className="flex gap-2 pt-2">
