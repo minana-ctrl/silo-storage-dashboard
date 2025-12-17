@@ -23,3 +23,4 @@ CREATE INDEX IF NOT EXISTS idx_vf_sessions_user_id ON public.vf_sessions (user_i
 -- Additional composite index for common filter combinations
 CREATE INDEX IF NOT EXISTS idx_vf_sessions_typeuser_location ON public.vf_sessions (typeuser, location_type, location_value);
 
+

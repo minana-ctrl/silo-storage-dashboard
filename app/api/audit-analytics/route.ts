@@ -255,7 +255,7 @@ export async function GET() {
       sessions_with_rating: string;
     }>(`
       SELECT 
-        (started_at AT TIME ZONE 'UTC' AT TIME ZONE '+11:00')::date as date,
+        (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date as date,
         COUNT(DISTINCT session_id) as total_sessions,
         COUNT(CASE WHEN rating IS NOT NULL THEN 1 END) as sessions_with_rating
       FROM public.vf_sessions
@@ -389,4 +389,5 @@ export async function GET() {
     );
   }
 }
+
 

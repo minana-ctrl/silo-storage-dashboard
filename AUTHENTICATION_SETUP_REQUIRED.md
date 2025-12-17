@@ -230,3 +230,4 @@ Then test at http://localhost:3000/login
 **Status**: Waiting for DATABASE_URL configuration  
 **Estimated Time**: 5 minutes to complete setup
 
+

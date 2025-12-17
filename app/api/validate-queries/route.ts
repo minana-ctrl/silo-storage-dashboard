@@ -219,8 +219,8 @@ export async function POST(request: NextRequest) {
           COUNT(CASE WHEN typeuser IS NOT NULL THEN 1 END) as with_typeuser,
           COUNT(CASE WHEN location_type IS NOT NULL THEN 1 END) as with_location
         FROM public.vf_sessions
-        WHERE (started_at AT TIME ZONE 'UTC' AT TIME ZONE '+11:00')::date >= $1::date
-          AND (started_at AT TIME ZONE 'UTC' AT TIME ZONE '+11:00')::date <= $2::date
+        WHERE (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= $1::date
+          AND (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= $2::date
       `,
         [startDate, endDate]
       );
@@ -297,4 +297,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
 
