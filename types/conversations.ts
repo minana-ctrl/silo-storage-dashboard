@@ -43,7 +43,9 @@ export interface ConversationFilters {
   tag?: string;
   limit?: number;
   cursor?: string;
+  environmentID?: string; // Filter by Voiceflow environment (production vs dev)
 }
+
 
 
 

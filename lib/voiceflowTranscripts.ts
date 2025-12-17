@@ -81,7 +81,10 @@ function mapTranscriptSummary(item: VoiceflowTranscriptListItem): TranscriptSumm
   return {
     id: item.id ?? item._id ?? randomUUID(),
     sessionId: item.sessionID,
-    userId: props.userId || props.user_id || props.userID || props.vf_user_id || undefined,
+    userId: (typeof props.userId === 'string' ? props.userId : 
+             typeof props.user_id === 'string' ? props.user_id :
+             typeof props.userID === 'string' ? props.userID :
+             typeof props.vf_user_id === 'string' ? props.vf_user_id : undefined),
     platform: typeof props.platform === 'string' ? (props.platform as string) : undefined,
     createdAt,
     lastInteractionAt: lastInteraction,
@@ -239,7 +242,7 @@ export async function fetchTranscriptSummaries(
     .map(mapTranscriptSummary)
     .filter((summary) => {
       // Filter by environmentID if specified (to get only production/deployed transcripts)
-      if (filters.environmentID && summary.raw?.environmentID !== filters.environmentID) {
+      if (filters.environmentID && (summary.raw as any)?.environmentID !== filters.environmentID) {
         return false;
       }
       
