@@ -11,7 +11,7 @@ import {
 } from '@/lib/analyticsQueries';
 import { query } from '@/lib/db';
 import { getApiKey, getProjectId } from '@/lib/env';
-import { fetchAnalytics, fetchIntents } from '@/lib/voiceflow';
+import { fetchAnalytics, fetchIntents, getDateRange } from '@/lib/voiceflow';
 import { getCachedAnalytics, cacheAnalytics, clearAnalyticsCache } from '@/lib/queryCache';
 import type { LocationBreakdown } from '@/types/analytics';
 
@@ -135,20 +135,9 @@ export async function POST(request: NextRequest) {
         effectiveDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
       } else {
         effectiveDays = days !== undefined ? days : 7;
-        const now = new Date();
-        endDate = now.toISOString().split('T')[0];
-        const start = new Date(now);
-
-        if (effectiveDays === 0) {
-          startDate = endDate;
-        } else if (effectiveDays === 1) {
-          start.setDate(start.getDate() - 1);
-          startDate = start.toISOString().split('T')[0];
-          endDate = startDate;
-        } else {
-          start.setDate(start.getDate() - effectiveDays + 1);
-          startDate = start.toISOString().split('T')[0];
-        }
+        const range = getDateRange(effectiveDays);
+        startDate = range.startDate;
+        endDate = range.endDate;
       }
 
       return NextResponse.json(generateMockData(effectiveDays, startDate, endDate));
@@ -169,26 +158,9 @@ export async function POST(request: NextRequest) {
       effectiveDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
     } else {
       effectiveDays = days !== undefined ? days : 7;
-
-      // Use Sydney timezone (UTC+11 AEDT)
-      // Get current UTC time and add 11 hours for Sydney
-      const now = new Date();
-      const sydneyNow = new Date(now.getTime() + (11 * 60 * 60 * 1000));
-      endDate = sydneyNow.toISOString().split('T')[0];
-
-      if (effectiveDays === 0) {
-        // Today in Sydney time
-        startDate = endDate;
-      } else if (effectiveDays === 1) {
-        // Yesterday in Sydney time
-        sydneyNow.setDate(sydneyNow.getDate() - 1);
-        startDate = sydneyNow.toISOString().split('T')[0];
-        endDate = startDate;
-      } else {
-        // Last N days in Sydney time
-        sydneyNow.setDate(sydneyNow.getDate() - (effectiveDays - 1));
-        startDate = sydneyNow.toISOString().split('T')[0];
-      }
+      const range = getDateRange(effectiveDays);
+      startDate = range.startDate;
+      endDate = range.endDate;
     }
 
     // Try to fetch from database first
@@ -206,10 +178,14 @@ export async function POST(request: NextRequest) {
       // This single query replaces 7 separate queries and is 60-80% faster
       const combinedData = await getAnalyticsDataCombined(startDate, endDate);
 
-      // Fetch funnel data and feedback separately (not included in combined query)
-      const [funnelBreakdown, feedback] = await Promise.all([
+      // Fetch funnel data, feedback, and real Voiceflow intents (not included in combined query)
+      const [funnelBreakdown, feedback, intents] = await Promise.all([
         getFunnelBreakdown(startDate, endDate),
         getFeedback(startDate, endDate),
+        fetchIntents(projectId, apiKey, startDate, endDate).catch((intentError) => {
+          console.warn('[Analytics] Failed to fetch real intent data:', intentError);
+          return [];
+        }),
       ]);
 
       // Fetch previous period for comparison
@@ -261,28 +237,36 @@ export async function POST(request: NextRequest) {
         messages: string;
       }>(
         `
-        SELECT 
-          s.date,
-          COUNT(DISTINCT s.session_id) as conversations,
-          COALESCE(SUM(t.message_count), 0) as messages
-        FROM (
+        WITH date_range AS (
+          SELECT generate_series($1::date, $2::date, '1 day'::interval)::date as date
+        ),
+        daily_sessions AS (
           SELECT 
-            session_id,
-            (started_at AT TIME ZONE 'UTC' AT TIME ZONE '+11:00')::date as date
+            (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date as date,
+            COUNT(DISTINCT session_id) as conversation_count
           FROM public.vf_sessions
-          WHERE (started_at AT TIME ZONE 'UTC' AT TIME ZONE '+11:00')::date >= $1::date 
-            AND (started_at AT TIME ZONE 'UTC' AT TIME ZONE '+11:00')::date <= $2::date
-        ) s
-        LEFT JOIN (
+          WHERE (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= $1::date 
+            AND (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= $2::date
+          GROUP BY date
+        ),
+        daily_messages AS (
           SELECT 
-            session_id,
+            (timestamp AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date as date,
             COUNT(*) as message_count
           FROM public.vf_turns
-          WHERE role IN ('user', 'assistant')
-          GROUP BY session_id
-        ) t ON s.session_id = t.session_id
-        GROUP BY s.date
-        ORDER BY s.date
+          WHERE (timestamp AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= $1::date 
+            AND (timestamp AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= $2::date
+            AND role IN ('user', 'assistant')
+          GROUP BY date
+        )
+        SELECT 
+          d.date,
+          COALESCE(s.conversation_count, 0) as conversations,
+          COALESCE(m.message_count, 0) as messages
+        FROM date_range d
+        LEFT JOIN daily_sessions s ON d.date = s.date
+        LEFT JOIN daily_messages m ON d.date = m.date
+        ORDER BY d.date
         `,
         [startDate, endDate]
       );
@@ -309,14 +293,7 @@ export async function POST(request: NextRequest) {
           messages: data.messages,
         }));
 
-      // Generate top intents from stored data (mock for now, can be enhanced)
-      const topIntents = [
-        { name: 'inquiry_rent', count: combinedData.categoryBreakdown.tenant * 2 },
-        { name: 'inquiry_investment', count: combinedData.categoryBreakdown.investor },
-        { name: 'request_information', count: combinedData.categoryBreakdown.owneroccupier },
-        { name: 'location_inquiry', count: Object.values(combinedData.locationBreakdown.rent).reduce((a, b) => a + b, 0) },
-        { name: 'schedule_inspection', count: combinedData.totalCTAViews },
-      ].filter((i) => i.count > 0);
+      const topIntents = intents.slice(0, 5);
 
       // Map category breakdown to clickthrough format
       const clickThrough = {

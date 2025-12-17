@@ -81,7 +81,7 @@ function mapTranscriptSummary(item: VoiceflowTranscriptListItem): TranscriptSumm
   return {
     id: item.id ?? item._id ?? randomUUID(),
     sessionId: item.sessionID,
-    userId: typeof props.userId === 'string' ? (props.userId as string) : undefined,
+    userId: props.userId || props.user_id || props.userID || props.vf_user_id || undefined,
     platform: typeof props.platform === 'string' ? (props.platform as string) : undefined,
     createdAt,
     lastInteractionAt: lastInteraction,
@@ -199,11 +199,13 @@ export async function fetchTranscriptSummaries(
   apiKey: string,
   filters: ConversationFilters = {}
 ): Promise<TranscriptListResponse> {
-  const url = `${TRANSCRIPT_BASE_URL}/project/${projectId}`;
+  // Use query parameters for pagination (take/skip)
+  const take = filters.limit || 100;
+  const skip = filters.cursor ? Number(filters.cursor) || 0 : 0;
+  const url = `${TRANSCRIPT_BASE_URL}/project/${projectId}?take=${take}&skip=${skip}`;
 
-  // The Voiceflow transcript API only accepts an empty body for POST requests
-  // Filtering happens client-side after receiving all transcripts
   console.log(`[fetchTranscriptSummaries] Fetching transcripts for project ${projectId}`);
+  console.log(`[fetchTranscriptSummaries] Pagination: take=${take}, skip=${skip}`);
   console.log(`[fetchTranscriptSummaries] Filters:`, JSON.stringify(filters));
 
   const response = await fetch(url, {
@@ -236,6 +238,11 @@ export async function fetchTranscriptSummaries(
   const filtered = items
     .map(mapTranscriptSummary)
     .filter((summary) => {
+      // Filter by environmentID if specified (to get only production/deployed transcripts)
+      if (filters.environmentID && summary.raw?.environmentID !== filters.environmentID) {
+        return false;
+      }
+      
       if (filters.platform && summary.platform?.toLowerCase() !== filters.platform.toLowerCase()) {
         return false;
       }
@@ -279,13 +286,10 @@ export async function fetchTranscriptSummaries(
     })
     .sort((a, b) => b.lastInteractionAt.localeCompare(a.lastInteractionAt));
 
-  const limit = filters.limit ?? DEFAULT_LIMIT;
-  const offset = filters.cursor ? Number(filters.cursor) || 0 : 0;
-  const limited = filtered.slice(offset, offset + limit);
-
+  // Return all filtered items (pagination already handled by API)
   return {
-    items: limited,
-    nextCursor: offset + limit < filtered.length ? String(offset + limit) : undefined,
+    items: filtered,
+    nextCursor: items.length === take ? String(skip + take) : undefined,
     isDemo: data.isDemo,
   };
 }

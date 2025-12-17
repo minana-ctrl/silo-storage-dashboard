@@ -130,30 +130,35 @@ export async function performSync(options: { force?: boolean } = {}): Promise<{ 
             console.log('[Sync] Full sync: fetching all transcripts (first time, no previous sync, or forced)');
         }
 
-        // Fetch transcript summaries with pagination
+        // Fetch transcript summaries with pagination (using take/skip query parameters)
+        // Filter by VERSION_ID to get only production environment
+        const versionId = process.env.VERSION_ID;
         const allTranscriptSummaries: TranscriptSummary[] = [];
-        let cursor: string | undefined = undefined;
+        let skip = 0;
+        const take = 100;
         let hasMore = true;
-        const pageSize = 100;
+
+        console.log(`[Sync] Filtering by environment: ${versionId || 'ALL'}`);
 
         while (hasMore) {
             const transcriptResponse = await fetchTranscriptSummaries(projectId, apiKey, {
-                limit: pageSize,
-                cursor,
-                // Only fetch transcripts created/updated since last sync
+                limit: take,
+                cursor: String(skip),
+                environmentID: versionId, // Filter by production environment
                 startTime: lastSyncTime || undefined,
             });
 
             if (transcriptResponse.items && transcriptResponse.items.length > 0) {
                 allTranscriptSummaries.push(...transcriptResponse.items);
-                console.log(`[Sync] Fetched page: ${transcriptResponse.items.length} transcripts (total so far: ${allTranscriptSummaries.length})`);
+                console.log(`[Sync] Fetched page (skip=${skip}): ${transcriptResponse.items.length} transcripts (total so far: ${allTranscriptSummaries.length})`);
             }
 
-            cursor = transcriptResponse.nextCursor;
-            hasMore = !!cursor;
+            // Check if there are more pages
+            hasMore = transcriptResponse.items.length === take;
+            skip += take;
 
             // Safety limit: prevent infinite loops
-            if (allTranscriptSummaries.length > 10000) {
+            if (skip > 10000) {
                 console.warn('[Sync] Reached safety limit of 10,000 transcripts. Stopping pagination.');
                 break;
             }
@@ -181,18 +186,20 @@ export async function performSync(options: { force?: boolean } = {}): Promise<{ 
 
         // Map API responses to transcript format
         const mappedTranscripts = fullTranscripts.map(transcriptData => {
-            const summary = allTranscriptSummaries.find(s => s.id === transcriptData.id);
+            const summary = allTranscriptSummaries.find(s => s.id === (transcriptData.id || transcriptData.transcript?.id));
+            const transcript = transcriptData.transcript || transcriptData;
+            
             return {
-                id: summary?.id,
-                _id: summary?.id,
-                sessionID: summary?.sessionId,
-                session_id: summary?.sessionId,
-                userId: summary?.userId,
-                createdAt: summary?.createdAt,
-                endedAt: summary?.lastInteractionAt,
-                updatedAt: summary?.lastInteractionAt,
+                id: transcript.id || summary?.id,
+                _id: transcript.id || summary?.id,
+                sessionID: transcript.sessionID || summary?.sessionId,
+                session_id: transcript.sessionID || summary?.sessionId,
+                userId: transcript.userId || summary?.userId,
+                createdAt: transcript.createdAt || summary?.createdAt,
+                endedAt: transcript.endedAt || summary?.lastInteractionAt,
+                updatedAt: transcript.updatedAt || summary?.lastInteractionAt,
                 properties: summary?.properties,
-                logs: transcriptData.transcript?.logs || [],
+                logs: transcript.logs || [],
             };
         });
 

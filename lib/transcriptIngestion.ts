@@ -234,9 +234,14 @@ async function insertEvents(events: any[]): Promise<number> {
 export async function ingestTranscript(rawTranscript: any): Promise<IngestionResult> {
   const transcriptId = rawTranscript.id || rawTranscript._id || '';
   const sessionId = rawTranscript.sessionID || rawTranscript.session_id || transcriptId || '';
-  const userId = rawTranscript.userId;
+  const userId = rawTranscript.userId || rawTranscript.user_id || rawTranscript.userID;
   const logs = rawTranscript.logs || [];
   const errors: string[] = [];
+  
+  // Log warning if userId is missing
+  if (!userId) {
+    console.warn(`[Ingestion] Session ${sessionId} missing userId - check transcript properties`);
+  }
 
   try {
     // 1. Insert/update vf_transcripts with raw JSON
@@ -244,6 +249,11 @@ export async function ingestTranscript(rawTranscript: any): Promise<IngestionRes
 
     // 2. Parse turns and insert into vf_turns
     const turnsCount = await insertTurns(transcriptRowId, sessionId, logs);
+    if (turnsCount === 0) {
+      console.warn(
+        `[Ingestion] No conversational turns captured for session ${sessionId} (${transcriptId})`
+      );
+    }
 
     // 3. Reconstruct session state (hybrid approach)
     const state = reconstructState(rawTranscript, logs);
@@ -252,6 +262,9 @@ export async function ingestTranscript(rawTranscript: any): Promise<IngestionRes
     const validation = validateState(state);
     if (!validation.valid) {
       errors.push(...validation.errors);
+      console.warn(
+        `[Ingestion] Validation warnings for session ${sessionId}: ${validation.errors.join('; ')}`
+      );
     }
 
     // 5. Upsert vf_sessions with final state
@@ -264,6 +277,11 @@ export async function ingestTranscript(rawTranscript: any): Promise<IngestionRes
     };
 
     await upsertSession(sessionData);
+    if (!sessionData.started_at || !sessionData.ended_at) {
+      console.warn(
+        `[Ingestion] Session ${sessionId} missing ${!sessionData.started_at ? 'started_at' : 'ended_at'} timestamp`
+      );
+    }
 
     // 6. Infer and insert events
     const events = inferEvents(sessionId, userId || null, state, logs);

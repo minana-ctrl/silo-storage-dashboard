@@ -17,8 +17,9 @@ import { clearAnalyticsCache } from '@/lib/queryCache';
 async function verifyAuth(request: NextRequest): Promise<boolean> {
   // 1. Check CRON_SECRET (for automated jobs or scripts)
   const authHeader = request.headers.get('authorization');
-  if (authHeader && process.env.CRON_SECRET) {
-    if (authHeader === `Bearer ${process.env.CRON_SECRET}`) {
+  if (authHeader) {
+    const cronSecret = process.env.CRON_SECRET || process.env.JWT_SECRET;
+    if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
       return true;
     }
   }

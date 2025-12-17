@@ -30,6 +30,8 @@ interface AnalyticsData {
   satisfactionScore: {
     average: number;
     trend: number[];
+    totalRatings?: number;
+    distribution?: Array<{ rating: number; count: number }>;
   };
   clickThrough: {
     rent: number;

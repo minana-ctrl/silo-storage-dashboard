@@ -25,12 +25,12 @@ export async function fetchTranscriptSummariesFromDB(
   }
 
   if (filters.startTime) {
-    whereClause += ` AND (t.started_at AT TIME ZONE 'UTC' AT TIME ZONE '+11:00') >= ($${params.length + 1}::timestamptz AT TIME ZONE 'UTC' AT TIME ZONE '+11:00')`;
+    whereClause += ` AND (t.started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney') >= ($${params.length + 1}::timestamptz AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')`;
     params.push(filters.startTime);
   }
 
   if (filters.endTime) {
-    whereClause += ` AND (t.started_at AT TIME ZONE 'UTC' AT TIME ZONE '+11:00') <= ($${params.length + 1}::timestamptz AT TIME ZONE 'UTC' AT TIME ZONE '+11:00')`;
+    whereClause += ` AND (t.started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney') <= ($${params.length + 1}::timestamptz AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')`;
     params.push(filters.endTime);
   }
 
@@ -42,6 +42,7 @@ export async function fetchTranscriptSummariesFromDB(
   // Main query - optimized to pre-aggregate message counts instead of LATERAL JOIN
   const baseParams = [...params];
 
+  // Query to get only the LATEST transcript per session_id (deduplicates resumed conversations)
   const result = await query<{
     id: string;
     transcript_id: string;
@@ -54,24 +55,38 @@ export async function fetchTranscriptSummariesFromDB(
     durationSeconds: number | null;
   }>(
     `
+    WITH latest_transcripts AS (
+      SELECT DISTINCT ON (t.session_id)
+        t.id,
+        t.transcript_id,
+        t.session_id,
+        t.user_id,
+        t.started_at,
+        t.ended_at,
+        t.updated_at,
+        t.created_at,
+        t.raw
+      FROM public.vf_transcripts t
+      WHERE ${whereClause}
+      ORDER BY t.session_id, t.started_at DESC
+    )
     SELECT 
-      t.id,
-      t.transcript_id,
-      t.session_id,
-      t.user_id,
-      t.started_at as "createdAt",
-      COALESCE(t.ended_at, t.updated_at, t.created_at) as "lastInteractionAt",
-      t.raw->'properties' as properties,
+      lt.id,
+      lt.transcript_id,
+      lt.session_id,
+      lt.user_id,
+      lt.started_at as "createdAt",
+      COALESCE(lt.ended_at, lt.updated_at, lt.created_at) as "lastInteractionAt",
+      lt.raw->'properties' as properties,
       COALESCE(msg_counts.count, 0)::text as "messageCount",
-      EXTRACT(EPOCH FROM (t.ended_at - t.started_at))::int as "durationSeconds"
-    FROM public.vf_transcripts t
+      EXTRACT(EPOCH FROM (lt.ended_at - lt.started_at))::int as "durationSeconds"
+    FROM latest_transcripts lt
     LEFT JOIN (
       SELECT transcript_row_id, COUNT(*) as count
       FROM public.vf_turns
       GROUP BY transcript_row_id
-    ) msg_counts ON msg_counts.transcript_row_id = t.id
-    WHERE ${whereClause}
-    ORDER BY t.started_at DESC
+    ) msg_counts ON msg_counts.transcript_row_id = lt.id
+    ORDER BY lt.started_at DESC
     LIMIT $${params.length + 1} OFFSET $${params.length + 2}
     `,
     [...baseParams, limit + 1, offset]
