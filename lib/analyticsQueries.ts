@@ -441,12 +441,12 @@ export async function getAnalyticsDataCombined(
     
     -- Satisfaction scores with date for trend
     satisfaction_data AS (
-      SELECT 
+      SELECT
         'satisfaction' as metric_type,
         rating::text as key1,
-        NULL::text as key2,
+        sydney_date::text as key2,  -- Changed: Put date in key2 for trend calculation
         COUNT(*)::text as value,
-        sydney_date::text as date
+        NULL::text as date
       FROM filtered_sessions
       WHERE rating IS NOT NULL
       GROUP BY rating, sydney_date
@@ -530,7 +530,7 @@ export async function getAnalyticsDataCombined(
   let totalRatings = 0;
   let sumRatings = 0;
   const distribution: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-  const trend: number[] = [];
+  const dailyRatings: Record<string, { sum: number; count: number }> = {};
 
   const conversationStats = {
     totalConversations: 0,
@@ -562,14 +562,22 @@ export async function getAnalyticsDataCombined(
 
       case 'satisfaction':
         const rating = parseInt(row.key1 || '0', 10);
+        const dateStr = row.key2 || '';  // Date from SQL query
+
         totalRatings += value;
         sumRatings += rating * value;
+
         if (rating in distribution) {
           distribution[rating] += value;
         }
-        // Add individual ratings to trend
-        for (let i = 0; i < value; i++) {
-          trend.push(rating);
+
+        // FIX: Calculate daily averages instead of pushing individual ratings
+        if (dateStr) {
+          if (!dailyRatings[dateStr]) {
+            dailyRatings[dateStr] = { sum: 0, count: 0 };
+          }
+          dailyRatings[dateStr].sum += rating * value;
+          dailyRatings[dateStr].count += value;
         }
         break;
 
@@ -599,6 +607,13 @@ export async function getAnalyticsDataCombined(
       rating: parseInt(rating, 10),
       count,
     }));
+
+  // FIX: Build trend from daily averages instead of individual ratings
+  const sortedDates = Object.keys(dailyRatings).sort();
+  const trend = sortedDates.map(date => {
+    const daily = dailyRatings[date];
+    return parseFloat((daily.sum / daily.count).toFixed(2));
+  });
 
   const satisfactionScore: SatisfactionScoreData = {
     average: Math.round(average * 100) / 100,

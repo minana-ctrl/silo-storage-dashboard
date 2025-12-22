@@ -80,54 +80,27 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    console.log('[Conversations] Fetching transcripts from database...');
-    const data = await fetchTranscriptSummariesFromDB(filters);
-    
-    // If no data from DB, try Voiceflow API if keys are present
-    if (data.items.length === 0) {
-      console.log('[Conversations] No transcripts in database for this filter');
-      
-      // If API keys are present, try Voiceflow API as fallback
-      if (projectId && apiKey) {
-        try {
-          console.log('[Conversations] Attempting to fetch from Voiceflow API...');
-          const voiceflowData = await fetchTranscriptSummaries(projectId, apiKey, filters);
-          
-          // Return Voiceflow data even if empty (isDemo: false means real data, just empty)
-          return NextResponse.json({ ...voiceflowData, isDemo: false }, { status: 200 });
-        } catch (voiceflowError) {
-          console.error('[Conversations] Voiceflow API also returned no data or failed:', voiceflowError);
-          // Both DB and Voiceflow returned empty/no data - return empty result, not mock
-          return NextResponse.json({ items: [], isDemo: false }, { status: 200 });
-        }
+    /**
+     * Prefer Voiceflow for the conversations list to ensure results are up-to-date
+     * even if the database sync is behind. DB remains a fallback.
+     */
+    console.log('[Conversations] Fetching transcripts from Voiceflow API...');
+    try {
+      const voiceflowData = await fetchTranscriptSummaries(projectId, apiKey, filters);
+      if (voiceflowData.items.length > 0) {
+        return NextResponse.json({ ...voiceflowData, isDemo: false }, { status: 200 });
       }
-      
-      // No API keys - return empty result, not mock data
-      return NextResponse.json({ items: [], isDemo: false }, { status: 200 });
+      console.log('[Conversations] Voiceflow returned no transcripts for this filter; falling back to DB.');
+    } catch (voiceflowError) {
+      console.warn('[Conversations] Voiceflow API fetch failed; falling back to DB:', voiceflowError);
     }
 
-    return NextResponse.json(
-      { ...data, isDemo: false },
-      { status: 200 }
-    );
+    console.log('[Conversations] Fetching transcripts from database (fallback)...');
+    const data = await fetchTranscriptSummariesFromDB(filters);
+    return NextResponse.json({ ...data, isDemo: false }, { status: 200 });
   } catch (error) {
-    console.warn('[Conversations] Database query failed:', error);
-    
-    // If API keys are present, try Voiceflow API as fallback
-    if (projectId && apiKey) {
-      try {
-        console.log('[Conversations] Attempting to fetch from Voiceflow API as fallback...');
-        const voiceflowData = await fetchTranscriptSummaries(projectId, apiKey, filters);
-        return NextResponse.json({ ...voiceflowData, isDemo: false }, { status: 200 });
-      } catch (voiceflowError) {
-        console.error('[Conversations] Voiceflow API fallback also failed:', voiceflowError);
-        // Both DB and Voiceflow failed, show demo data
-        const response = generateMockTranscripts();
-        return NextResponse.json(response, { status: 200 });
-      }
-    }
-    
-    // No API keys or both DB and Voiceflow failed, return mock data
+    console.warn('[Conversations] Conversations endpoint failed:', error);
+    // As a last resort, show demo data
     const response = generateMockTranscripts();
     return NextResponse.json(response, { status: 200 });
   }

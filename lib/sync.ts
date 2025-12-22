@@ -138,7 +138,10 @@ export async function performSync(options: { force?: boolean } = {}): Promise<{ 
         const take = 100;
         let hasMore = true;
 
-        console.log(`[Sync] Filtering by environment: ${versionId || 'ALL'}`);
+        console.log(`[Sync] Filtering by environment: ${versionId || 'ALL (WARNING: No VERSION_ID set - will sync all environments)'}`);
+        if (!versionId) {
+            console.warn('[Sync] VERSION_ID not set! This will fetch transcripts from ALL environments. Set VERSION_ID to filter only production.');
+        }
 
         while (hasMore) {
             const transcriptResponse = await fetchTranscriptSummaries(projectId, apiKey, {
@@ -239,6 +242,13 @@ export async function performSync(options: { force?: boolean } = {}): Promise<{ 
 
         if (totalSynced > 0 && sessionsAdded === 0) {
             console.warn('[Sync] WARNING: Transcripts were synced but no new sessions were added - possible data issue');
+        }
+
+        // Clear analytics cache after successful sync to ensure fresh data
+        if (totalSynced > 0) {
+            const { clearAnalyticsCache } = await import('./queryCache');
+            clearAnalyticsCache();
+            console.log('[Sync] Analytics cache cleared - users will see fresh data');
         }
 
         return {

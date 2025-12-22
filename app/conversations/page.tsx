@@ -16,22 +16,30 @@ interface FilterState {
 }
 
 function getDateRange(days: number) {
-  const end = new Date();
-  const start = new Date();
+  // Use Sydney timezone consistently with analytics
+  const now = new Date();
+  const sydneyNow = new Date(
+    now.toLocaleString('en-US', { timeZone: 'Australia/Sydney' })
+  );
+  
+  const start = new Date(sydneyNow);
+  const end = new Date(sydneyNow);
   
   if (days === 0) {
-    // Today
+    // Today in Sydney timezone
     start.setHours(0, 0, 0, 0);
     end.setHours(23, 59, 59, 999);
   } else if (days === 1) {
-    // Yesterday
+    // Yesterday in Sydney timezone
     start.setDate(start.getDate() - 1);
     start.setHours(0, 0, 0, 0);
     end.setDate(end.getDate() - 1);
     end.setHours(23, 59, 59, 999);
   } else {
-    // Last N days
+    // Last N days in Sydney timezone
     start.setDate(start.getDate() - (days - 1));
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
   }
 
   return {

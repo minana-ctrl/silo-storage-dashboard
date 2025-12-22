@@ -1,84 +1,93 @@
 # Silo Storage Dashboard
 
-A high-performance internal dashboard for monitoring AI agent analytics and reviewing conversation logs, integrated with Voiceflow API.
+A Next.js 14 dashboard for monitoring AI agent analytics, troubleshooting conversation flows, and keeping Voiceflow data in sync with a PostgreSQL warehouse.
 
-## Getting Started
+## Documentation
+
+The previous ad-hoc audit/checklist markdowns have been replaced with a dedicated `docs/` folder:
+
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) – high-level system overview, data flow, and directories
+- [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) – setup, environment variables, scripts, and deployment
+- [`docs/API.md`](docs/API.md) – internal API reference for the dashboard
+- [`docs/voiceflow/`](docs/voiceflow) – Voiceflow API reference material
+
+## Quick Start
 
 ### Prerequisites
 
-- Node.js 18+ and npm/yarn/pnpm
+- Node.js ≥18 and npm ≥9
+- Running PostgreSQL instance
+- Voiceflow Dialog Manager project with Analytics API access
 
-### Installation
+### Install & Run
 
-1. Install dependencies:
+1. Install dependencies
+   ```bash
+   npm install
+   ```
+2. Create `.env.local` with at least:
+   ```
+   DATABASE_URL=postgres://user:pass@localhost:5432/silo
+   PROJECT_ID=your_voiceflow_project
+   VERSION_ID=your_voiceflow_env
+   API_KEY=VF.DM.your_api_key
+   JWT_SECRET=change-me-super-long
+   CRON_SECRET=optional-cron-token
+   ```
+   See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md#2-environment-variables) for the full list and details.
+3. Start the dev server
+   ```bash
+   npm run dev
+   ```
+4. Open [http://localhost:3000](http://localhost:3000)
+
+### Build & Lint
+
 ```bash
-npm install
+npm run lint
+npm run build
+npm start   # runs scripts/start.js (migrations + next start)
 ```
-
-2. Ensure your `.env.local` file contains the Voiceflow API credentials:
-```
-PROJECT_ID=68792d2878b4da6819beed13
-VERSION_ID=68792d2878b4da6819beed14
-API_KEY=VF.DM.6900af41a4313f954735f12b.7aOTRQv8N76ZUXTV
-```
-
-3. Run the development server:
-```bash
-npm run dev
-```
-
-4. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## Features
 
-- **Analytics Dashboard**: View conversation metrics, message statistics, and user analytics
-- **Time Period Filtering**: Filter data by 7, 14, 30, or 90 days
-- **Visual Charts**: Interactive charts showing conversations and messages over time
-- **Voiceflow Integration**: Real-time data from Voiceflow Analytics API
+- **Analytics Dashboard** – conversations, message volume, satisfaction score, click-through, and funnel stats
+- **Time Range Controls** – rolling presets (7/14/30/90 days) or custom date selection
+- **Conversation Explorer** – list and inspect raw transcripts with debug toggles and local notes
+- **Voiceflow Integration** – syncs transcripts/events via `/api/sync-transcripts`, falls back to live Voiceflow APIs when DB data is missing
+- **Admin Tools** – manage users, passwords, and trigger data refreshes directly from the UI
 
 ## Project Structure
 
 ```
 ├── app/
-│   ├── api/
-│   │   └── analytics/        # API route for Voiceflow analytics
-│   ├── analytics/            # Analytics page
-│   ├── layout.tsx            # Root layout with sidebar
-│   └── globals.css           # Global styles and design tokens
-├── components/
-│   ├── Sidebar.tsx           # Navigation sidebar
-│   ├── MetricCard.tsx        # Metric display card
-│   ├── TimeFilter.tsx        # Time period selector
-│   ├── ConversationsChart.tsx # Conversations chart
-│   └── MessagesChart.tsx     # Messages chart
-├── lib/
-│   └── voiceflow.ts          # Voiceflow API client
-└── types/
-    └── analytics.ts          # TypeScript interfaces
+│   ├── analytics/            # Analytics dashboard page
+│   ├── conversations/        # Transcript explorer
+│   ├── login/                # Auth shell
+│   ├── api/                  # Route handlers (analytics, sync, auth, users, etc.)
+│   └── layout.tsx            # Application shell + fonts
+├── components/               # Reusable UI (charts, cards, inspectors)
+├── lib/                      # Database, Voiceflow clients, query cache, sync, auth helpers
+├── db/migrations/            # SQL schema for vf_* tables and auth/users
+├── scripts/                  # Migration/startup/sync utilities
+├── docs/                     # Architecture, development, API, and Voiceflow references
+└── public/                   # Static assets
 ```
 
 ## Design System
 
-- **Primary Color**: `#ec2f2f` (Vibrant Red)
-- **Secondary Color**: `#000000` (Black)
-- **Background**: `#ffffff` (White)
-- **Typography**: Robostic-Futuristic-Font (headings), Metropolis (body)
+- Primary: `#ec2f2f`
+- Secondary: `#000000`
+- Typography: Metropolis (body) + Robostic Futuristic (headings) loaded in `app/layout.tsx`
 
-## API Integration
+## Voiceflow Integration
 
-The dashboard integrates with Voiceflow's Analytics API to fetch:
-- Total conversations
-- Incoming messages
-- Average interactions per conversation
-- Unique users
-- Time series data for visualizations
+`lib/voiceflow.ts` uses the Voiceflow Analytics v2 endpoint to fetch interactions, users, sessions, and top intents. Transcript ingestion relies on `lib/voiceflowTranscripts.ts` for summaries and dialog turns. See [`docs/API.md`](docs/API.md) and [`docs/voiceflow/AnalyticsApi.md`](docs/voiceflow/AnalyticsApi.md) for payload details.
 
-## Build
+## Deployment Notes
 
-```bash
-npm run build
-npm start
-```
+- Production `npm start` runs `scripts/start.js`, which applies database migrations before launching `next start`.
+- Schedule a cron (Railway or similar) to hit `/api/sync-transcripts` with `Authorization: Bearer <CRON_SECRET>` so analytics stay fresh.
 
 
 

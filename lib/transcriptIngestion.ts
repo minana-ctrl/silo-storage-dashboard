@@ -210,12 +210,15 @@ async function insertEvents(events: any[]): Promise<number> {
       JSON.stringify(event.meta || {}),
     ]);
 
+    // FIX: Use ON CONFLICT to skip duplicate events instead of throwing errors
+    // Matches the unique_event_idx index (session_id, event_type, event_ts, cta_id, cta_name)
     await query(
       `
       INSERT INTO public.vf_events (
         session_id, user_id, event_type, event_ts, typeuser, location_type, location_value,
         rating, feedback, cta_id, cta_name, meta
       ) VALUES ${placeholders}
+      ON CONFLICT (session_id, event_type, event_ts, cta_id, cta_name) DO NOTHING
       `,
       values
     );

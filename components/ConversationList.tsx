@@ -144,7 +144,7 @@ export default function ConversationList({
                   </p>
                 </div>
                 <p className="mt-2 line-clamp-2 text-sm font-body text-text-dark">
-                  {conversation.firstUserMessagePreview ?? 'Conversation details unavailable.'}
+                  {conversation.firstUserMessagePreview ?? 'Open conversation to view messages.'}
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {conversation.tags?.slice(0, 3).map((tag) => (

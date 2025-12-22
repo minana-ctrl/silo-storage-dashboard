@@ -38,17 +38,13 @@ todos:
 
 ## Overview
 
-Fix all 7 critical issues causing incorrect analytics data. Ensure consistency with Voiceflow API as the source of truth, fix date handling, repair feedback/satisfaction calculations, and implement proper data attribution.
-
----
+Fix all 7 critical issues causing incorrect analytics data. Ensure consistency with Voiceflow API as the source of truth, fix date handling, repair feedback/satisfaction calculations, and implement proper data attribution.---
 
 ## Issues to Fix
 
 ### 1. Conversations Definition & Counting
 
-**Problem**: Database uses `vf_sessions` count as "conversations" but Voiceflow API uses `unique_users` as "sessions"
-
-**Fix**:
+**Problem**: Database uses `vf_sessions` count as "conversations" but Voiceflow API uses `unique_users` as "sessions"**Fix**:
 
 - Change database model: 1 session = 1 conversation (Voiceflow transcript = 1 session = 1 conversation)
 - Update [`lib/voiceflow.ts`](lib/voiceflow.ts) line 158: Remove incorrect `totalSessions = totalUsers` logic
@@ -58,9 +54,7 @@ Fix all 7 critical issues causing incorrect analytics data. Ensure consistency w
 
 ### 2. Messages Attribution Across Time Boundaries
 
-**Problem**: Messages counted on session start date, not on actual message date
-
-**Fix**:
+**Problem**: Messages counted on session start date, not on actual message date**Fix**:
 
 - Update [`app/api/analytics/route.ts`](app/api/analytics/route.ts) lines 258-288 daily query
 - Separate conversation counting (by session start date) from message counting (by message timestamp)
@@ -101,28 +95,27 @@ LEFT JOIN daily_messages m ON d.date = m.date
 ORDER BY d.date
 ```
 
+
+
+
 - **Key principle**: Conversations counted ONCE on session start date; Messages counted on the date they were actually sent
 
 ### 3. Timezone Fixed Offset → Dynamic Timezone
 
-**Problem**: Hardcoded `'+11:00'` doesn't handle DST (Australia/Sydney is +10 in winter, +11 in summer)
-
-**Fix**:
+**Problem**: Hardcoded `'+11:00'` doesn't handle DST (Australia/Sydney is +10 in winter, +11 in summer)**Fix**:
 
 - Replace ALL instances of `AT TIME ZONE 'UTC' AT TIME ZONE '+11:00'` 
 - Use: `AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney'`
 - Files to update:
-  - [`lib/analyticsQueries.ts`](lib/analyticsQueries.ts) - all 8 functions
-  - [`app/api/analytics/route.ts`](app/api/analytics/route.ts) - daily query
-  - [`lib/conversationQueries.ts`](lib/conversationQueries.ts) - lines 28, 33 (confirmed has timezone issues)
+- [`lib/analyticsQueries.ts`](lib/analyticsQueries.ts) - all 8 functions
+- [`app/api/analytics/route.ts`](app/api/analytics/route.ts) - daily query
+- [`lib/conversationQueries.ts`](lib/conversationQueries.ts) - lines 28, 33 (confirmed has timezone issues)
 - Update date calculation in [`app/api/analytics/route.ts`](app/api/analytics/route.ts) lines 173-191
 - Use proper timezone library or system timezone for Sydney
 
 ### 4. Feedback Query Missing Low Ratings Without Text
 
-**Problem**: Query filters `feedback IS NOT NULL` causing ratings 1-3 without feedback text to be invisible
-
-**Fix**:
+**Problem**: Query filters `feedback IS NOT NULL` causing ratings 1-3 without feedback text to be invisible**Fix**:
 
 - Update [`lib/analyticsQueries.ts`](lib/analyticsQueries.ts) `getSatisfactionScore` lines 88-151
 - Include ALL ratings 1-5 in satisfaction calculation (current code is correct)
@@ -141,13 +134,14 @@ WHERE (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= $
 ORDER BY started_at DESC
 ```
 
+
+
+
 - This ensures low ratings are visible even without feedback text
 
 ### 5. Top Intents Using Fake Data
 
-**Problem**: Mock intent names generated from category counts instead of real Voiceflow intents
-
-**Fix**:
+**Problem**: Mock intent names generated from category counts instead of real Voiceflow intents**Fix**:
 
 - Remove mock intent generation in [`app/api/analytics/route.ts`](app/api/analytics/route.ts) lines 313-319
 - Fetch real intents from Voiceflow API using `fetchIntents` (already exists)
@@ -156,16 +150,17 @@ ORDER BY started_at DESC
 const topIntents = await fetchIntents(projectId, apiKey, startDate, endDate);
 ```
 
+
+
+
 - Handle empty intents gracefully (show "No intent data" instead of mock data)
 - Store intent data in database for faster access:
-  - Add `intent_name` column to `vf_sessions` table
-  - Parse intent from transcript logs during ingestion in [`lib/transcriptIngestion.ts`](lib/transcriptIngestion.ts)
+- Add `intent_name` column to `vf_sessions` table
+- Parse intent from transcript logs during ingestion in [`lib/transcriptIngestion.ts`](lib/transcriptIngestion.ts)
 
 ### 6. Satisfaction Trend Contains Raw Ratings
 
-**Problem**: Trend array has raw values `[5, 4, 5, 3]` instead of daily averages
-
-**Fix**:
+**Problem**: Trend array has raw values `[5, 4, 5, 3]` instead of daily averages**Fix**:
 
 - Update [`lib/analyticsQueries.ts`](lib/analyticsQueries.ts) `getSatisfactionScore` lines 88-151
 - Change trend calculation from individual ratings to daily averages:
@@ -191,11 +186,11 @@ const trend = Array.from(dailyAverages.entries())
 ```
 
 
+
+
 ### 7. Date Calculation Consistency
 
-**Problem**: Frontend sends days, backend calculates dates inconsistently
-
-**Fix**:
+**Problem**: Frontend sends days, backend calculates dates inconsistently**Fix**:
 
 - Centralize date calculation in [`lib/voiceflow.ts`](lib/voiceflow.ts) `getDateRange` function
 - Update to use Sydney timezone:
@@ -228,6 +223,9 @@ export function getDateRange(days: number): { startDate: string; endDate: string
 }
 ```
 
+
+
+
 - Use this function in [`app/api/analytics/route.ts`](app/api/analytics/route.ts) instead of inline calculation
 
 ---
@@ -239,14 +237,14 @@ export function getDateRange(days: number): { startDate: string; endDate: string
 1. Add validation endpoint: `POST /api/analytics/validate`
 2. Fetch data from both:
 
-   - Database (current system)
-   - Voiceflow Analytics API (source of truth)
+- Database (current system)
+- Voiceflow Analytics API (source of truth)
 
 3. Compare and report differences:
 
-   - Conversation count: DB sessions vs VF transcripts count
-   - Message count: DB turns vs VF interactions
-   - Date ranges: Ensure consistent timezone
+- Conversation count: DB sessions vs VF transcripts count
+- Message count: DB turns vs VF interactions
+- Date ranges: Ensure consistent timezone
 
 4. Log discrepancies for investigation
 
@@ -254,14 +252,14 @@ export function getDateRange(days: number): { startDate: string; endDate: string
 
 1. In [`lib/transcriptIngestion.ts`](lib/transcriptIngestion.ts):
 
-   - Log sessions without turns (orphan sessions)
-   - Log turns without matching session (data integrity issue)
-   - Validate rating + feedback rules
+- Log sessions without turns (orphan sessions)
+- Log turns without matching session (data integrity issue)
+- Validate rating + feedback rules
 
 2. In [`app/api/analytics/route.ts`](app/api/analytics/route.ts):
 
-   - Check for date boundary issues (sessions without messages)
-   - Validate timezone conversions (log dates in both UTC and Sydney)
+- Check for date boundary issues (sessions without messages)
+- Validate timezone conversions (log dates in both UTC and Sydney)
 
 ---
 
@@ -269,36 +267,36 @@ export function getDateRange(days: number): { startDate: string; endDate: string
 
 1. [`lib/voiceflow.ts`](lib/voiceflow.ts)
 
-   - Fix session counting logic
-   - Update `getDateRange` for Sydney timezone
+- Fix session counting logic
+- Update `getDateRange` for Sydney timezone
 
 2. [`lib/analyticsQueries.ts`](lib/analyticsQueries.ts)
 
-   - Fix timezone in all queries (8+ functions)
-   - Fix satisfaction trend calculation
-   - Fix feedback query to include all low ratings
+- Fix timezone in all queries (8+ functions)
+- Fix satisfaction trend calculation
+- Fix feedback query to include all low ratings
 
 3. [`app/api/analytics/route.ts`](app/api/analytics/route.ts)
 
-   - Fix daily time series query
-   - Remove fake intent generation
-   - Use real Voiceflow intents
-   - Fix date calculation to use Sydney timezone
+- Fix daily time series query
+- Remove fake intent generation
+- Use real Voiceflow intents
+- Fix date calculation to use Sydney timezone
 
 4. [`lib/conversationQueries.ts`](lib/conversationQueries.ts)
 
-   - Fix timezone in lines 28, 33 (discovered during audit)
-   - Replace `'+11:00'` with `'Australia/Sydney'`
+- Fix timezone in lines 28, 33 (discovered during audit)
+- Replace `'+11:00'` with `'Australia/Sydney'`
 
 5. [`lib/transcriptIngestion.ts`](lib/transcriptIngestion.ts)
 
-   - Add intent extraction during ingestion (future enhancement)
-   - Add data validation checks
+- Add intent extraction during ingestion (future enhancement)
+- Add data validation checks
 
 6. Create new: `app/api/analytics/validate/route.ts`
 
-   - Validation endpoint to compare DB vs Voiceflow API
-   - Returns discrepancies report
+- Validation endpoint to compare DB vs Voiceflow API
+- Returns discrepancies report
 
 ---
 
@@ -325,11 +323,7 @@ export function getDateRange(days: number): { startDate: string; endDate: string
 
 ### Multi-Day Message Attribution
 
-**Before:** All messages counted on session start date, regardless of when sent
-
-**After:** Messages counted on the date they were actually sent
-
-**Example:**
+**Before:** All messages counted on session start date, regardless of when sent**After:** Messages counted on the date they were actually sent**Example:**
 
 - Session starts Dec 16 at 11pm with 2 messages
 - User returns Dec 17 at 9am with 3 more messages
@@ -348,5 +342,3 @@ export function getDateRange(days: number): { startDate: string; endDate: string
 
 - Daily message charts will show accurate distribution of when messages were sent
 - Daily conversation counts remain unchanged (still counted once per session on start date)
-- Total conversation and message counts remain exactly the same
-- Charts will better reflect actual user activity patterns throughout the day

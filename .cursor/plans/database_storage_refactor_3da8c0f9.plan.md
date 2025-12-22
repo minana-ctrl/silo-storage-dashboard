@@ -26,9 +26,7 @@ todos:
 
 ## Overview
 
-Migrate from direct Voiceflow API calls to a **local Postgres database** with 4 tables for storing transcripts, sessions, events, and conversation turns. Analytics will query the database instead of the API, and a periodic sync job will keep data fresh.
-
----
+Migrate from direct Voiceflow API calls to a **local Postgres database** with 4 tables for storing transcripts, sessions, events, and conversation turns. Analytics will query the database instead of the API, and a periodic sync job will keep data fresh.---
 
 ## Architecture
 
@@ -94,6 +92,8 @@ create index on public.vf_sessions (created_at);
 create index on public.vf_sessions (transcript_id);
 ```
 
+
+
 ### 2. **vf_events** (funnel tracking + CTA visibility)
 
 ```sql
@@ -122,6 +122,8 @@ create index on public.vf_events (event_type, event_ts);
 create index on public.vf_events (cta_id);
 ```
 
+
+
 ### 3. **vf_transcripts** (raw storage)
 
 ```sql
@@ -147,6 +149,8 @@ create index on public.vf_transcripts (session_id);
 create index on public.vf_transcripts (transcript_id);
 create index on public.vf_transcripts (created_at);
 ```
+
+
 
 ### 4. **vf_turns** (normalized messages)
 
@@ -242,9 +246,7 @@ async function ingestTranscript(rawTranscript) {
 }
 ```
 
-**State Reconstruction Logic:**
-
-Leverage existing [`lib/propertyParser.ts`](lib/propertyParser.ts) logic:
+**State Reconstruction Logic:**Leverage existing [`lib/propertyParser.ts`](lib/propertyParser.ts) logic:
 
 ```typescript
 // lib/stateReconstructor.ts
@@ -316,6 +318,8 @@ function inferEvents(state, turns) {
 }
 ```
 
+
+
 ### Phase 3: Sync Strategy (Railway Cron Jobs)
 
 **Files to create:**
@@ -326,15 +330,15 @@ function inferEvents(state, turns) {
 
 1. **In Railway Dashboard:**
 
-   - Go to your Next.js service
-   - Click **Settings** → **Cron Jobs**
-   - Click **Add Cron Job**
-   - Schedule: `*/15 * * * *` (every 15 minutes)
-   - Command: `curl -X POST https://$RAILWAY_PUBLIC_DOMAIN/api/sync-transcripts -H "Authorization: Bearer $CRON_SECRET"`
+- Go to your Next.js service
+- Click **Settings** → **Cron Jobs**
+- Click **Add Cron Job**
+- Schedule: `*/15 * * * *` (every 15 minutes)
+- Command: `curl -X POST https://$RAILWAY_PUBLIC_DOMAIN/api/sync-transcripts -H "Authorization: Bearer $CRON_SECRET"`
 
 2. **Set Environment Variable:**
 
-   - Add `CRON_SECRET=<random-string>` in Railway dashboard
+- Add `CRON_SECRET=<random-string>` in Railway dashboard
 
 **Endpoint Implementation:**
 
@@ -372,6 +376,8 @@ export async function GET() {
   return NextResponse.json({ synced: transcripts.length });
 }
 ```
+
+
 
 ### Phase 4: Refactor Analytics to Query Database
 
@@ -479,9 +485,7 @@ async function getFunnelBreakdown(startDate: string, endDate: string) {
 }
 ```
 
-**Refactor [`app/api/analytics/route.ts`](app/api/analytics/route.ts):**
-
-Replace the current Voiceflow API calls with database queries:
+**Refactor [`app/api/analytics/route.ts`](app/api/analytics/route.ts):**Replace the current Voiceflow API calls with database queries:
 
 ```typescript
 // Before: fetchAnalytics(projectId, apiKey, startDate, endDate)
@@ -492,6 +496,8 @@ const satisfactionScore = await getSatisfactionScore(startDate, endDate);
 const feedback = await getFeedback(startDate, endDate);
 const funnel = await getFunnelBreakdown(startDate, endDate);
 ```
+
+
 
 ### Phase 5: Refactor Conversations to Query Database
 
@@ -549,6 +555,8 @@ async function fetchTranscriptDialog(transcriptId: string) {
   return result.rows;
 }
 ```
+
+
 
 ### Phase 6: Testing & Migration
 
@@ -643,4 +651,3 @@ SELECT event_type, COUNT(*) FROM vf_events GROUP BY event_type;
 2. **Build Keyword Extractor** - Use `text_tsv` for "Top Topics"
 3. **Real-time Sync** - Add webhook endpoint for instant transcript updates
 4. **Data Retention** - Archive old transcripts to object storage (S3/Supabase Storage) after 90 days
-5. **Analytics Dashboards** - Build custom SQL views for common queries

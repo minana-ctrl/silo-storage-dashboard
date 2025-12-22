@@ -11,8 +11,20 @@ export async function fetchTranscriptSummariesFromDB(
   const limit = Math.min(filters.limit || 20, 100);
   const offset = filters.cursor ? Number(filters.cursor) || 0 : 0;
 
-  // Build where clause based on filters (using started_at for consistency with Analytics)
-  let whereClause = 't.started_at IS NOT NULL';
+  /**
+   * IMPORTANT: The Conversations page should filter + sort by "latest activity",
+   * not just when a transcript started. This ensures "Last 7/14/30 days" shows
+   * the most up-to-date conversations (including resumed / updated transcripts).
+   *
+   * All timestamp columns here are `timestamptz`, so we compare directly in UTC
+   * using the ISO strings coming from the client.
+   */
+  // Prefer the last turn timestamp when available (most accurate "last message" time).
+  // Fallback to transcript-level timestamps.
+  const activityAtExpr = `COALESCE(t.ended_at, ts.last_turn_at, t.updated_at, t.created_at, t.started_at)`;
+
+  // Build where clause based on filters (filtering by latest activity timestamp)
+  let whereClause = `${activityAtExpr} IS NOT NULL`;
   const params: (string | number)[] = [];
 
   if (filters.query) {
@@ -25,12 +37,12 @@ export async function fetchTranscriptSummariesFromDB(
   }
 
   if (filters.startTime) {
-    whereClause += ` AND (t.started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney') >= ($${params.length + 1}::timestamptz AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')`;
+    whereClause += ` AND ${activityAtExpr} >= $${params.length + 1}::timestamptz`;
     params.push(filters.startTime);
   }
 
   if (filters.endTime) {
-    whereClause += ` AND (t.started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney') <= ($${params.length + 1}::timestamptz AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')`;
+    whereClause += ` AND ${activityAtExpr} <= $${params.length + 1}::timestamptz`;
     params.push(filters.endTime);
   }
 
@@ -53,9 +65,19 @@ export async function fetchTranscriptSummariesFromDB(
     properties: Record<string, any>;
     messageCount: string;
     durationSeconds: number | null;
+    firstUserMessage: string | null;
   }>(
     `
-    WITH latest_transcripts AS (
+    WITH turn_stats AS (
+      SELECT
+        transcript_row_id,
+        COUNT(*) as message_count,
+        -- Some ingestions may not populate vf_turns.timestamp reliably; fall back to created_at.
+        MAX(COALESCE(timestamp, created_at)) as last_turn_at
+      FROM public.vf_turns
+      GROUP BY transcript_row_id
+    ),
+    latest_transcripts AS (
       SELECT DISTINCT ON (t.session_id)
         t.id,
         t.transcript_id,
@@ -65,10 +87,14 @@ export async function fetchTranscriptSummariesFromDB(
         t.ended_at,
         t.updated_at,
         t.created_at,
-        t.raw
+        t.raw,
+        ts.message_count,
+        ts.last_turn_at,
+        ${activityAtExpr} as activity_at
       FROM public.vf_transcripts t
+      LEFT JOIN turn_stats ts ON ts.transcript_row_id = t.id
       WHERE ${whereClause}
-      ORDER BY t.session_id, t.started_at DESC
+      ORDER BY t.session_id, ${activityAtExpr} DESC, t.started_at DESC
     )
     SELECT 
       lt.id,
@@ -76,17 +102,19 @@ export async function fetchTranscriptSummariesFromDB(
       lt.session_id,
       lt.user_id,
       lt.started_at as "createdAt",
-      COALESCE(lt.ended_at, lt.updated_at, lt.created_at) as "lastInteractionAt",
+      lt.activity_at as "lastInteractionAt",
       lt.raw->'properties' as properties,
-      COALESCE(msg_counts.count, 0)::text as "messageCount",
-      EXTRACT(EPOCH FROM (lt.ended_at - lt.started_at))::int as "durationSeconds"
+      COALESCE(lt.message_count, 0)::text as "messageCount",
+      EXTRACT(EPOCH FROM (lt.ended_at - lt.started_at))::int as "durationSeconds",
+      (
+        SELECT text
+        FROM public.vf_turns
+        WHERE transcript_row_id = lt.id AND role = 'user'
+        ORDER BY turn_index ASC
+        LIMIT 1
+      ) as "firstUserMessage"
     FROM latest_transcripts lt
-    LEFT JOIN (
-      SELECT transcript_row_id, COUNT(*) as count
-      FROM public.vf_turns
-      GROUP BY transcript_row_id
-    ) msg_counts ON msg_counts.transcript_row_id = lt.id
-    ORDER BY lt.started_at DESC
+    ORDER BY lt.activity_at DESC, lt.started_at DESC
     LIMIT $${params.length + 1} OFFSET $${params.length + 2}
     `,
     [...baseParams, limit + 1, offset]
@@ -111,7 +139,7 @@ export async function fetchTranscriptSummariesFromDB(
     lastInteractionAt: row.lastInteractionAt,
     tags: [],
     properties: row.properties || {},
-    firstUserMessagePreview: undefined,
+    firstUserMessagePreview: row.firstUserMessage || undefined,
     messageCount: parseInt(row.messageCount, 10),
     durationSeconds: row.durationSeconds || undefined,
     raw: undefined,
@@ -188,6 +216,7 @@ export async function fetchTranscriptByIdFromDB(transcriptId: string): Promise<T
     properties: Record<string, any>;
     messageCount: string;
     durationSeconds: number | null;
+    firstUserMessage: string | null;
   }>(
     `
     SELECT 
@@ -199,7 +228,14 @@ export async function fetchTranscriptByIdFromDB(transcriptId: string): Promise<T
       COALESCE(t.ended_at, t.updated_at, t.created_at) as "lastInteractionAt",
       t.raw->'properties' as properties,
       COALESCE(msg_counts.count, 0)::text as "messageCount",
-      EXTRACT(EPOCH FROM (t.ended_at - t.started_at))::int as "durationSeconds"
+      EXTRACT(EPOCH FROM (t.ended_at - t.started_at))::int as "durationSeconds",
+      (
+        SELECT text
+        FROM public.vf_turns
+        WHERE transcript_row_id = t.id AND role = 'user'
+        ORDER BY turn_index ASC
+        LIMIT 1
+      ) as "firstUserMessage"
     FROM public.vf_transcripts t
     LEFT JOIN (
       SELECT transcript_row_id, COUNT(*) as count
@@ -225,7 +261,7 @@ export async function fetchTranscriptByIdFromDB(transcriptId: string): Promise<T
     lastInteractionAt: row.lastInteractionAt,
     tags: [],
     properties: row.properties || {},
-    firstUserMessagePreview: undefined,
+    firstUserMessagePreview: row.firstUserMessage || undefined,
     messageCount: parseInt(row.messageCount, 10),
     durationSeconds: row.durationSeconds || undefined,
     raw: undefined,

@@ -209,7 +209,14 @@ export async function fetchTranscriptSummaries(
 
   console.log(`[fetchTranscriptSummaries] Fetching transcripts for project ${projectId}`);
   console.log(`[fetchTranscriptSummaries] Pagination: take=${take}, skip=${skip}`);
-  console.log(`[fetchTranscriptSummaries] Filters:`, JSON.stringify(filters));
+  console.log(`[fetchTranscriptSummaries] Filters (client-side):`, JSON.stringify(filters));
+  
+  if (filters.startTime) {
+    console.log(`[fetchTranscriptSummaries] Will filter by startTime client-side: ${filters.startTime}`);
+  }
+  if (filters.environmentID) {
+    console.log(`[fetchTranscriptSummaries] Will filter by environmentID client-side: ${filters.environmentID}`);
+  }
 
   const response = await fetch(url, {
     method: 'POST',
@@ -249,6 +256,10 @@ export async function fetchTranscriptSummaries(
       // Filter by environmentID if specified (to get only production/deployed transcripts)
       if (filters.environmentID && (summary.raw as any)?.environmentID !== filters.environmentID) {
         filteredByEnv++;
+        if (filteredByEnv === 1) {
+          // Log first mismatch for debugging
+          console.warn(`[fetchTranscriptSummaries] environmentID mismatch - Expected: ${filters.environmentID}, Got: ${(summary.raw as any)?.environmentID}`);
+        }
         return false;
       }
       
@@ -281,7 +292,8 @@ export async function fetchTranscriptSummaries(
 
       if (filters.startTime) {
         const start = new Date(filters.startTime).getTime();
-        if (new Date(summary.createdAt).getTime() < start) {
+        // Conversations filters are based on most recent activity, not just start time.
+        if (new Date(summary.lastInteractionAt).getTime() < start) {
           filteredByTime++;
           return false;
         }
@@ -289,7 +301,7 @@ export async function fetchTranscriptSummaries(
 
       if (filters.endTime) {
         const end = new Date(filters.endTime).getTime();
-        if (new Date(summary.createdAt).getTime() > end) {
+        if (new Date(summary.lastInteractionAt).getTime() > end) {
           filteredByTime++;
           return false;
         }

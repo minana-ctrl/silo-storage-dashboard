@@ -14,7 +14,7 @@ class LRUCache<T> {
   private maxSize: number;
   private ttl: number; // Time to live in milliseconds
 
-  constructor(maxSize: number = 100, ttl: number = 5 * 60 * 1000) {
+  constructor(maxSize: number = 100, ttl: number = 1 * 60 * 1000) {
     this.maxSize = maxSize;
     this.ttl = ttl;
   }
@@ -100,9 +100,9 @@ class LRUCache<T> {
   }
 }
 
-// Global cache instance - 5 minute TTL for analytics data
-// Analytics data changes less frequently than transactional data, so longer TTL is beneficial
-const analyticsCache = new LRUCache<any>(100, 5 * 60 * 1000); // 5 minute TTL
+// Global cache instance - 10 second TTL for analytics data
+// Shorter TTL ensures users see fresher data after sync operations
+const analyticsCache = new LRUCache<any>(100, 10 * 1000); // 10 second TTL (reduced from 60s)
 
 /**
  * Get cached analytics data or null if not found/expired
@@ -141,10 +141,10 @@ export function cleanupCache(): void {
   analyticsCache.cleanup();
 }
 
-// Periodically cleanup expired entries every 5 minutes
+// Periodically cleanup expired entries every minute
 setInterval(() => {
   analyticsCache.cleanup();
-}, 5 * 60 * 1000);
+}, 1 * 60 * 1000);
 
 export default analyticsCache;
 

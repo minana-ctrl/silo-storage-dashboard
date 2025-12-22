@@ -178,6 +178,34 @@ export async function POST(request: NextRequest) {
       // This single query replaces 7 separate queries and is 60-80% faster
       const combinedData = await getAnalyticsDataCombined(startDate, endDate);
 
+      // Check if querying for today and database has zero conversations
+      // If so, check Voiceflow API and trigger a background sync
+      const sydneyNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Australia/Sydney' }));
+      const today = sydneyNow.toISOString().split('T')[0];
+
+      if (startDate === today && combinedData.conversationStats.totalConversations === 0) {
+        console.log('[Analytics] No data in DB for today, checking Voiceflow API...');
+        try {
+          const voiceflowData = await fetchAnalytics(projectId, apiKey, startDate, endDate);
+          if (voiceflowData.usage.sessions > 0) {
+            console.log(`[Analytics] Found ${voiceflowData.usage.sessions} sessions in Voiceflow, triggering background sync...`);
+            
+            // Trigger background sync (fire and forget)
+            const baseUrl = request.url.split('/api')[0];
+            fetch(`${baseUrl}/api/sync-transcripts`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${process.env.CRON_SECRET || process.env.JWT_SECRET}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ force: false })
+            }).catch(e => console.warn('[Analytics] Background sync failed:', e));
+          }
+        } catch (voiceflowError) {
+          console.warn('[Analytics] Voiceflow fallback check failed:', voiceflowError);
+        }
+      }
+
       // Fetch funnel data, feedback, and real Voiceflow intents (not included in combined query)
       const [funnelBreakdown, feedback, intents] = await Promise.all([
         getFunnelBreakdown(startDate, endDate),
@@ -296,9 +324,9 @@ export async function POST(request: NextRequest) {
       const topIntents = intents.slice(0, 5);
 
       // Map category breakdown to clickthrough format
+      // FIX: Remove duplicate 'sales' category - show only distinct categories
       const clickThrough = {
         rent: combinedData.categoryBreakdown.tenant,
-        sales: combinedData.categoryBreakdown.investor + combinedData.categoryBreakdown.owneroccupier,
         ownerOccupier: combinedData.categoryBreakdown.owneroccupier,
         investor: combinedData.categoryBreakdown.investor,
       };

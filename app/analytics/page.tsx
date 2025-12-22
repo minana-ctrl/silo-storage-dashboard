@@ -257,7 +257,7 @@ export default function AnalyticsPage() {
                 showChange={true}
               />
               <MetricCard
-                label="Incoming Messages"
+                label="Messages"
                 value={data.metrics.incomingMessages}
                 change={data.metrics.messagesChange}
                 showChange={true}
