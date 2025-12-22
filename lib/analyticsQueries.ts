@@ -21,8 +21,8 @@ export async function getCategoryBreakdown(
       typeuser,
       COUNT(*) as count
     FROM public.vf_sessions
-    WHERE (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= $1::date 
-      AND (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= $2::date
+    WHERE utc_to_sydney_date(started_at) >= $1::date 
+      AND utc_to_sydney_date(started_at) <= $2::date
       AND typeuser IS NOT NULL
     GROUP BY typeuser
     `,
@@ -54,8 +54,8 @@ export async function getLocationBreakdown(
       LOWER(TRIM(location_value)) as location_value,
       COUNT(*) as count
     FROM public.vf_sessions
-    WHERE (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= $1::date 
-      AND (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= $2::date
+    WHERE utc_to_sydney_date(started_at) >= $1::date 
+      AND utc_to_sydney_date(started_at) <= $2::date
       AND location_type IS NOT NULL
       AND location_value IS NOT NULL
     GROUP BY location_type, LOWER(TRIM(location_value))
@@ -100,12 +100,12 @@ export async function getSatisfactionScore(
     SELECT 
       rating,
       COUNT(*) as count,
-      (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date as date
+      utc_to_sydney_date(started_at) as date
     FROM public.vf_sessions
-    WHERE (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= $1::date 
-      AND (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= $2::date
+    WHERE utc_to_sydney_date(started_at) >= $1::date 
+      AND utc_to_sydney_date(started_at) <= $2::date
       AND rating IS NOT NULL
-    GROUP BY rating, (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date
+    GROUP BY rating, utc_to_sydney_date(started_at)
     ORDER BY date, rating
     `,
     [startDate, endDate]
@@ -179,8 +179,8 @@ export async function getFeedback(
       started_at as timestamp,
       transcript_id as "transcriptId"
     FROM public.vf_sessions
-    WHERE (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= $1::date 
-      AND (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= $2::date
+    WHERE utc_to_sydney_date(started_at) >= $1::date 
+      AND utc_to_sydney_date(started_at) <= $2::date
       AND rating IS NOT NULL
       AND rating <= 3
     ORDER BY started_at DESC
@@ -213,8 +213,8 @@ export async function getFunnelBreakdown(
       typeuser,
       COUNT(*) as count
     FROM public.vf_sessions
-    WHERE (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= $1::date 
-      AND (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= $2::date
+    WHERE utc_to_sydney_date(started_at) >= $1::date 
+      AND utc_to_sydney_date(started_at) <= $2::date
       AND typeuser IS NOT NULL
     GROUP BY typeuser
     `,
@@ -228,8 +228,8 @@ export async function getFunnelBreakdown(
       typeuser,
       COUNT(*) as count
     FROM public.vf_sessions
-    WHERE (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= $1::date 
-      AND (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= $2::date
+    WHERE utc_to_sydney_date(started_at) >= $1::date 
+      AND utc_to_sydney_date(started_at) <= $2::date
       AND typeuser IS NOT NULL
       AND location_value IS NOT NULL
     GROUP BY typeuser
@@ -276,8 +276,8 @@ export async function getConversationStats(
     `
     SELECT COUNT(*) as count
     FROM public.vf_sessions
-    WHERE (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= $1::date 
-      AND (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= $2::date
+    WHERE utc_to_sydney_date(started_at) >= $1::date 
+      AND utc_to_sydney_date(started_at) <= $2::date
     `,
     [startDate, endDate]
   );
@@ -286,8 +286,8 @@ export async function getConversationStats(
     `
     SELECT COUNT(*) as count
     FROM public.vf_turns
-    WHERE (timestamp AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= $1::date 
-      AND (timestamp AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= $2::date
+    WHERE utc_to_sydney_date(timestamp) >= $1::date 
+      AND utc_to_sydney_date(timestamp) <= $2::date
       AND role IN ('user', 'assistant')
     `,
     [startDate, endDate]
@@ -299,8 +299,8 @@ export async function getConversationStats(
     `
     SELECT COUNT(DISTINCT session_id) as count
     FROM public.vf_sessions
-    WHERE (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= $1::date 
-      AND (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= $2::date
+    WHERE utc_to_sydney_date(started_at) >= $1::date 
+      AND utc_to_sydney_date(started_at) <= $2::date
     `,
     [startDate, endDate]
   );
@@ -320,8 +320,8 @@ export async function getCTAMetrics(startDate: string, endDate: string): Promise
     `
     SELECT COUNT(*) as count
     FROM public.vf_events
-    WHERE (event_ts AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= $1::date 
-      AND (event_ts AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= $2::date
+    WHERE utc_to_sydney_date(event_ts) >= $1::date 
+      AND utc_to_sydney_date(event_ts) <= $2::date
       AND event_type = 'cta_clicked'
     `,
     [startDate, endDate]
@@ -343,8 +343,8 @@ export async function getCTABreakdown(
       cta_name,
       COUNT(*) as count
     FROM public.vf_events
-    WHERE (event_ts AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= $1::date 
-      AND (event_ts AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= $2::date
+    WHERE utc_to_sydney_date(event_ts) >= $1::date 
+      AND utc_to_sydney_date(event_ts) <= $2::date
       AND event_type = 'cta_clicked'
       AND cta_name IS NOT NULL
     GROUP BY cta_name
@@ -406,11 +406,11 @@ export async function getAnalyticsDataCombined(
         location_value,
         rating,
         started_at,
-        (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date as sydney_date
+        utc_to_sydney_date(started_at) as sydney_date
       FROM public.vf_sessions
       CROSS JOIN date_range
-      WHERE (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= date_range.start_date
-        AND (started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= date_range.end_date
+      WHERE utc_to_sydney_date(started_at) >= date_range.start_date
+        AND utc_to_sydney_date(started_at) <= date_range.end_date
     ),
     
     -- Category breakdown (typeuser counts)
@@ -483,8 +483,8 @@ export async function getAnalyticsDataCombined(
         NULL::text as date
       FROM public.vf_turns t
       CROSS JOIN date_range dr
-      WHERE (t.timestamp AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= dr.start_date
-        AND (t.timestamp AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= dr.end_date
+      WHERE utc_to_sydney_date(t.timestamp) >= dr.start_date
+        AND utc_to_sydney_date(t.timestamp) <= dr.end_date
         AND t.role IN ('user', 'assistant')
     ),
     
@@ -498,8 +498,8 @@ export async function getAnalyticsDataCombined(
         NULL::text as date
       FROM public.vf_events e
       CROSS JOIN date_range dr
-      WHERE (e.event_ts AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date >= dr.start_date
-        AND (e.event_ts AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney')::date <= dr.end_date
+      WHERE utc_to_sydney_date(e.event_ts) >= dr.start_date
+        AND utc_to_sydney_date(e.event_ts) <= dr.end_date
         AND e.event_type = 'cta_clicked'
     )
     

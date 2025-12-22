@@ -108,22 +108,16 @@ export async function fetchAnalytics(
   console.log('Date range:', startTime, 'to', endTime);
   console.log('API Key format:', apiKey.substring(0, 10) + '...');
 
-  // Fetch interactions (messages), unique users, and sessions in parallel
-  // These are the main metrics per the API docs
-  const [interactionsResult, usersResult, sessionsResult] = await Promise.all([
+  // Fetch interactions (messages) and unique users in parallel
+  // Note: The Voiceflow Analytics API v2 does not have a 'sessions' metric.
+  // We use unique_users as an approximation for sessions.
+  const [interactionsResult, usersResult] = await Promise.all([
     fetchMetric(apiKey, projectId, 'interactions', startTime, endTime),
     fetchMetric(apiKey, projectId, 'unique_users', startTime, endTime),
-    fetchMetric(apiKey, projectId, 'sessions', startTime, endTime).catch((error) => {
-      console.warn('Failed to fetch sessions metric, falling back to unique_users:', error);
-      return null;
-    }),
   ]);
 
   console.log('Interactions result:', JSON.stringify(interactionsResult).substring(0, 500));
   console.log('Users result:', JSON.stringify(usersResult).substring(0, 500));
-  if (sessionsResult) {
-    console.log('Sessions result:', JSON.stringify(sessionsResult).substring(0, 500));
-  }
 
   // Process interactions data
   let totalInteractions = 0;
@@ -159,17 +153,9 @@ export async function fetchAnalytics(
     usersTimeSeries.sort((a, b) => a.period.localeCompare(b.period));
   }
 
-  // Process sessions data (actual conversation sessions from Voiceflow)
-  let totalSessions = 0;
-  if (sessionsResult?.result?.items) {
-    const dailySessions = aggregateByDate(sessionsResult.result.items);
-    for (const [, count] of dailySessions) {
-      totalSessions += count;
-    }
-  } else {
-    // Fallback: approximate sessions using unique users if sessions metric unavailable
-    totalSessions = totalUsers;
-  }
+  // Use unique users as an approximation for sessions
+  // (Voiceflow API v2 doesn't provide a separate 'sessions' metric)
+  const totalSessions = totalUsers;
 
   console.log('Totals - Interactions:', totalInteractions, 'Sessions:', totalSessions, 'Users:', totalUsers);
   console.log('Interactions time series:', interactionsTimeSeries);
